@@ -14,6 +14,13 @@ export const calendarState = {
 export function initCalendar(allNoticias = []) {
   calendarState.noticias = allNoticias; // ✅ FIX: persistimos los datos
 
+  const featured = allNoticias.find(n => n.destacada || n.fecha === '2026-04-28');
+  if (featured) {
+    const featuredDate = new Date(featured.fecha);
+    calendarState.selectedDate = featuredDate;
+    calendarState.date = new Date(featuredDate.getFullYear(), featuredDate.getMonth(), 1);
+  }
+
   const prev = getElement('#calendar-prev');
   const next = getElement('#calendar-next');
 
@@ -21,6 +28,9 @@ export function initCalendar(allNoticias = []) {
   if (next) next.addEventListener('click', nextMonth);
 
   renderCalendar();
+  if (calendarState.selectedDate) {
+    showNewsForDate(calendarState.selectedDate);
+  }
 }
 
 function prevMonth() {
@@ -73,12 +83,18 @@ export function renderCalendar() {
       cell.setAttribute('aria-label', `${day} de ${monthNames[date.getMonth()]}`);
 
       const dayDate = new Date(date.getFullYear(), date.getMonth(), day);
+      const dayKey = dateToISO(dayDate);
+      const matches = allNoticias.filter(n => n.fecha === dayKey);
       const isToday = day === today.getDate() && date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
       const isSelected = calendarState.selectedDate &&
         calendarState.selectedDate.getDate() === day &&
         calendarState.selectedDate.getMonth() === date.getMonth() &&
         calendarState.selectedDate.getFullYear() === date.getFullYear();
 
+      if (matches.length > 0) {
+        cell.classList.add('calendar-day-has-event');
+        cell.title = `${matches.length} noticia${matches.length > 1 ? 's' : ''} programada${matches.length > 1 ? '' : 'a'}`;
+      }
       if (isToday) cell.classList.add('calendar-day-today');
       if (isSelected) {
         cell.classList.add('calendar-day-selected');

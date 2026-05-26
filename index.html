@@ -23,21 +23,31 @@
   <!-- HEADER -->
   <header role="banner">
     <div class="header-logo">
-      <img class="logo-img" src="logo_jefatura.jpg" alt="Escudo de la Dirección General de Cultura y Educación" />
+      <img class="logo-img" src="logo_jefatura.jpg" alt="Escudo de la Dirección General de Cultura y Educación" onerror="this.onerror=null;this.src='logo_jefatura.jpg'" />
       <div class="logo-texts">
         <p class="pre">DGCyE · Provincia de Buenos Aires</p>
         <h1 class="titulo">Jefatura Distrital Quilmes</h1>
         <p class="sub">Dirección General de Cultura y Educación</p>
       </div>
     </div>
+    <div class="header-right">
+      <form class="buscador" role="search" aria-label="Buscar noticias">
+        <label for="search-input" class="sr-only">Buscar noticias</label>
+        <input id="search-input" type="search" placeholder="Buscar noticias..." aria-label="Buscar noticias" />
+        <span class="search-hint" aria-hidden="true">🔎</span>
+      </form>
+      <button id="nav-toggle" class="nav-toggle" aria-expanded="false" aria-label="Abrir menú principal">☰</button>
+    </div>
   </header>
 
   <!-- NAVEGACIÓN PRINCIPAL -->
-  <nav role="navigation" aria-label="Menú principal">
+  <nav class="primary-nav" role="navigation" aria-label="Menú principal">
     <a href="#" class="active" aria-current="page">Inicio</a>
     <a href="#">Analíticos Incompletos</a>
     <a href="#">CUPOF</a>
   </nav>
+
+  <div id="app-alert" class="app-alert" role="status" aria-live="polite"></div>
 
   <!-- CONTENIDO PRINCIPAL -->
   <div class="main-layout">
@@ -50,13 +60,13 @@
         <h2 id="titulo-destacada">Noticia destacada</h2>
       </section>
       <article class="noticia-destacada" aria-live="polite">
-        <div  class="nd-imagen">
-          <div class="nd-imagen-emoji" ></div>
+        <div class="nd-imagen">
+          <img src="proyecto_distrital.jpg" alt="Proyecto Distrital Quilmes - 28 de abril" loading="lazy" />
         </div>
         <div class="nd-body">
           <div class="nd-tag" aria-label="Etiqueta: Destacado">📌 Destacado</div>
-          <h3>Inicio del ciclo lectivo 2026 en el Distrito Quilmes</h3>
-          <p>Las instituciones educativas del distrito dieron inicio al ciclo lectivo con actos de bienvenida, presencia de autoridades y el regreso de miles de estudiantes a las aulas.</p>
+          <h3>Proyecto Distrital Quilmes</h3>
+          <p>Presentamos la imagen del Proyecto Distrital del 28 de abril, destacada en el calendario y visible desde la portada.</p>
           <div class="nd-meta">
             <time class="nd-fecha" datetime="2026-04-28" aria-label="Fecha: 28 de abril de 2026">📅 28 de abril de 2026</time>
             <a href="#" class="leer-mas" aria-label="Leer noticia completa">Leer más →</a>
@@ -67,7 +77,9 @@
       <!-- ÚLTIMAS NOTICIAS -->
       <section class="seccion-titulo" aria-labelledby="titulo-noticias">
         <h2 id="titulo-noticias">Últimas noticias</h2>
-        <a href="#" class="ver-mas-link" aria-label="Ver todas las noticias">Ver todas →</a>
+        <div class="section-actions">
+          <a href="#" class="ver-mas-link" aria-label="Ver todas las noticias">Ver todas →</a>
+        </div>
       </section>
       <div class="grid-noticias" id="grid-noticias" aria-live="polite" aria-label="Lista de noticias recientes">
         <div class="sin-noticias">Cargando noticias...</div>
@@ -295,12 +307,8 @@
     </div>
     <div class="footer-bottom">
       <span>© 2026 Jefatura Distrital Quilmes — DGCyE Provincia de Buenos Aires</span>
-      <div class="redes" role="list" aria-label="Redes sociales">
-        <a href="#" class="red" role="listitem" aria-label="Instagram">📷</a>
-      </div>
     </div>
   </footer>
-
   <script type="module" src="js/main.js" defer></script>
 </body>
 </html>

@@ -7,6 +7,26 @@ import { sanitize, handleError, safeFetch, getElement } from './utils.js';
 
 let allNoticias = [];
 
+function normalizeFecha(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value).substring(0, 10);
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizeNoticia(noticia) {
+  return {
+    ...noticia,
+    fecha: normalizeFecha(noticia.fecha),
+    imagen: noticia.imagen || noticia.imagen_url || '',
+    categoria: noticia.categoria || '',
+    destacada: noticia.destacada === 1 || noticia.destacada === '1' || noticia.destacada === true,
+    publicada: noticia.publicada === 1 || noticia.publicada === '1' || noticia.publicada === true
+  };
+}
+
 const featuredOverride = {
   id: 'featured-proyecto-distrital',
   titulo: 'Proyecto Distrital Quilmes',
@@ -21,8 +41,9 @@ export async function cargarNoticias() {
   const cacheKey = 'jefatura_noticias_v1';
   try {
     const noticias = await safeFetch('/noticias');
-    if (Array.isArray(noticias) && noticias.length) {
-      allNoticias = noticias;
+    const normalized = Array.isArray(noticias) ? noticias.map(normalizeNoticia) : [];
+    if (normalized.length) {
+      allNoticias = normalized;
       // Guardar copia en cache para fallback offline
       try {
         localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: allNoticias }));
@@ -30,7 +51,7 @@ export async function cargarNoticias() {
         handleError(e, 'cargarNoticias.localStorage.setItem');
       }
     } else {
-      allNoticias = Array.isArray(noticias) ? noticias : [];
+      allNoticias = normalized;
     }
 
     const hasFeaturedOverride = allNoticias.some(n => n.fecha === featuredOverride.fecha && n.imagen === featuredOverride.imagen);
@@ -49,7 +70,7 @@ export async function cargarNoticias() {
       const cachedRaw = localStorage.getItem(cacheKey);
       if (cachedRaw) {
         const cached = JSON.parse(cachedRaw);
-        allNoticias = Array.isArray(cached?.data) ? cached.data : [];
+        allNoticias = Array.isArray(cached?.data) ? cached.data.map(normalizeNoticia) : [];
         // Asegurar override destacado
         const hasFeaturedOverride = allNoticias.some(n => n.fecha === featuredOverride.fecha && n.imagen === featuredOverride.imagen);
         if (!hasFeaturedOverride) {
@@ -64,10 +85,13 @@ export async function cargarNoticias() {
       handleError(e, 'cargarNoticias.parseCache');
     }
 
-    // Si no hay cache disponible, mostrar mensaje de error en UI
+    // Si no hay cache disponible, mostrar mensaje de error en UI.
+    // No reemplazamos la tarjeta destacada estática si ya existe.
     showErrorMessage('No se pudieron cargar las noticias. Intente nuevamente más tarde.');
-    renderNoticiaDestacada();
-    renderNoticiasList();
+    const grid = getElement('.grid-noticias');
+    if (grid) {
+      grid.innerHTML = '<div class="sin-noticias">No se pudieron cargar las noticias. Por favor recarga la página.</div>';
+    }
     return [];
   }
 }
@@ -92,9 +116,10 @@ function renderNoticiaDestacada() {
   }
 
   const destacada = allNoticias.find(n => n.destacada || n.fecha === featuredOverride.fecha) || allNoticias[0];
+  const imageSrc = destacada.imagen ? sanitize(destacada.imagen) : 'proyecto_distrital.jpg';
 
-  const imagenHTML = destacada.imagen
-    ? `<img src="${sanitize(destacada.imagen)}" alt="Imagen: ${sanitize(destacada.titulo)}" loading="lazy" onerror="this.onerror=null;this.src='logo_jefatura.jpg'" />`
+  const imagenHTML = imageSrc
+    ? `<img src="${imageSrc}" alt="Imagen: ${sanitize(destacada.titulo)}" loading="lazy" onerror="this.onerror=null;this.src='logo_jefatura.jpg'" />`
     : `<div class="nd-imagen-emoji" aria-label="Icono de educación">🎓</div>`;
 
   noticiaDestacada.innerHTML = `

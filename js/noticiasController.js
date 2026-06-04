@@ -158,6 +158,9 @@ function getAll(req, res) {
     const value = ['1', 'true', 'yes'].includes(String(publicada).toLowerCase()) ? 1 : 0;
     conditions.push('n.publicada = ?');
     params.push(value);
+  } else {
+    // Por defecto, solo mostrar noticias publicadas en los endpoints públicos.
+    conditions.push('n.publicada = 1');
   }
 
   if (search) {
@@ -229,7 +232,7 @@ function getById(req, res) {
       c.nombre AS categoria
     FROM noticias n
     LEFT JOIN categorias c ON n.categoria_id = c.id
-    WHERE n.id = ?
+    WHERE n.id = ? AND n.deleted_at IS NULL AND n.publicada = 1
     LIMIT 1`,
     [id],
     (err, results) => {

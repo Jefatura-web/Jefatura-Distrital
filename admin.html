@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Panel administrativo para crear noticias en la Jefatura Distrital Quilmes" />
+  <title>Admin Noticias | Jefatura Distrital Quilmes</title>
+  <link rel="stylesheet" href="css/estilo.css" />
+</head>
+<body>
+  <main class="admin-page">
+    <section class="admin-panel">
+      <h1>Panel administrativo de noticias</h1>
+      <p>Usa este formulario para crear noticias desde el backend. No está vinculado desde la página pública.</p>
+      <div class="admin-note">
+        <strong>Token de administración:</strong> ingrésalo aquí para enviar la noticia.
+      </div>
+      <form id="form-crear-noticia" class="admin-form" aria-label="Formulario de creación de noticias">
+        <label for="admin-token">Token de administración</label>
+        <input id="admin-token" type="password" placeholder="Bearer token" autocomplete="off" required />
+
+        <label for="noticia-titulo">Título</label>
+        <input id="noticia-titulo" name="titulo" type="text" placeholder="Título de la noticia" required />
+
+        <label for="noticia-descripcion">Descripción breve</label>
+        <input id="noticia-descripcion" name="descripcion" type="text" placeholder="Descripción corta" />
+
+        <label for="noticia-texto">Texto completo</label>
+        <textarea id="noticia-texto" name="texto" rows="6" placeholder="Contenido de la noticia" required></textarea>
+
+        <label for="noticia-categoria">Categoría (ID)</label>
+        <input id="noticia-categoria" name="categoria_id" type="number" min="1" placeholder="1 = Comunicado" required />
+        <small>Usa el ID de categoría según tu base de datos (ej. 1 = Comunicado, 5 = Institucional).</small>
+
+        <label for="noticia-fecha">Fecha</label>
+        <input id="noticia-fecha" name="fecha" type="date" required />
+
+        <label for="noticia-imagen">URL de imagen (opcional)</label>
+        <input id="noticia-imagen" name="imagen_url" type="text" placeholder="proyecto_distrital.jpg o URL completa" />
+
+        <div class="form-switch">
+          <label><input id="noticia-destacada" name="destacada" type="checkbox" /> Destacada</label>
+          <label><input id="noticia-publicada" name="publicada" type="checkbox" checked /> Publicada</label>
+        </div>
+
+        <button type="submit">Crear noticia</button>
+      </form>
+
+      <div id="app-alert" class="app-alert" role="status" aria-live="polite"></div>
+
+      <div class="admin-help">
+        <p>Si quieres crear noticias directamente por backend sin usar la página pública, usa este panel o el endpoint <code>POST /noticias</code>.</p>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>

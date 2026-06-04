@@ -14,27 +14,23 @@ export function initNoticiasForm() {
   const btnCancelar = getElement('#btn-cancelar-noticia');
   const form = getElement('#form-crear-noticia');
 
-  if (!btnCrear || !modal || !form) return;
+  if (!form) return;
 
-  // Abrir modal
-  btnCrear.addEventListener('click', (e) => {
-    e.preventDefault();
-    abrirModal(modal);
-  });
+  if (btnCrear && modal) {
+    btnCrear.addEventListener('click', (e) => {
+      e.preventDefault();
+      abrirModal(modal);
+    });
 
-  // Cerrar modal
-  if (btnCerrar) btnCerrar.addEventListener('click', () => cerrarModal(modal));
-  if (btnCancelar) btnCancelar.addEventListener('click', () => cerrarModal(modal));
+    if (btnCerrar) btnCerrar.addEventListener('click', () => cerrarModal(modal));
+    if (btnCancelar) btnCancelar.addEventListener('click', () => cerrarModal(modal));
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) cerrarModal(modal);
+    });
+  }
 
-  // Cerrar modal al hacer clic fuera
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) cerrarModal(modal);
-  });
-
-  // Enviar formulario
   form.addEventListener('submit', (e) => enviarFormulario(e, modal));
 
-  // Establecer fecha actual por defecto
   const inputFecha = getElement('#noticia-fecha');
   if (inputFecha) {
     const today = new Date().toISOString().split('T')[0];
@@ -66,6 +62,7 @@ async function enviarFormulario(event, modal) {
   event.preventDefault();
 
   const form = getElement('#form-crear-noticia');
+  const tokenInput = getElement('#admin-token');
   const formData = new FormData(form);
   const data = {
     titulo: formData.get('titulo'),
@@ -77,6 +74,14 @@ async function enviarFormulario(event, modal) {
     destacada: formData.get('destacada') === 'on',
     publicada: formData.get('publicada') === 'on'
   };
+
+  let tokenRaw = tokenInput?.value.trim() || '';
+  if (!tokenRaw) {
+    showAppAlert('Debes ingresar el token de administración para crear noticias.', 'error');
+    return;
+  }
+  // Normalizar token: aceptar tanto 'Bearer x' como 'x'
+  const token = tokenRaw.replace(/^Bearer\s+/i, '');
 
   // Validación adicional en cliente
   if (!data.titulo || !data.texto || !data.categoria_id || !data.fecha) {
@@ -91,30 +96,31 @@ async function enviarFormulario(event, modal) {
       btnSubmit.textContent = 'Creando...';
     }
 
-    const response = await safeFetch('/noticias', {
+    const result = await safeFetch('/noticias', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
       body: JSON.stringify(data)
     });
 
-    if (response.ok && response.data) {
-      // Cerrar modal
+    if (result && result.ok) {
       cerrarModal(modal);
-
-      // Mostrar mensaje de éxito
       showAppAlert('✅ Noticia creada exitosamente. Se actualizará automáticamente.', 'success');
 
-      // Recargar noticias
       setTimeout(async () => {
         await cargarNoticias();
-        renderCalendar();
+        if (typeof renderCalendar === 'function') {
+          renderCalendar();
+        }
       }, 500);
     } else {
-      showAppAlert('Error al crear la noticia. Intenta nuevamente.', 'error');
+      showAppAlert(result?.error || 'Error al crear la noticia. Intenta nuevamente.', 'error');
     }
   } catch (error) {
     handleError(error, 'enviarFormulario');
-    showAppAlert('No se pudo crear la noticia. Verifica la conexión.', 'error');
+    showAppAlert('No se pudo crear la noticia. Verifica la conexión y el token.', 'error');
   } finally {
     const btnSubmit = getElement('#form-crear-noticia button[type="submit"]');
     if (btnSubmit) {

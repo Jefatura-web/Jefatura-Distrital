@@ -2,6 +2,8 @@
  * Módulo de utilidades - Funciones compartidas
  */
 
+import { getApiBaseUrl } from './apiConfig.js';
+
 export function sanitize(str) {
   if (typeof str !== 'string') return '';
   const div = document.createElement('div');
@@ -19,6 +21,12 @@ export function formatDate(date) {
   });
 }
 
+export function apiFetch(path, options = {}) {
+  const baseUrl = getApiBaseUrl();
+  const url = new URL(path, baseUrl).href;
+  return safeFetch(url, options);
+}
+
 export function dateToISO(date) {
   if (!(date instanceof Date)) return '';
   return date.toISOString().slice(0, 10);
@@ -32,10 +40,22 @@ export function handleError(error, context = 'Error') {
 export async function safeFetch(url, options = {}) {
   try {
     const response = await fetch(url, options);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const body = await response.text();
+    let data = null;
+    try {
+      data = body ? JSON.parse(body) : null;
+    } catch (parseError) {
+      data = body;
     }
-    return await response.json();
+
+    if (!response.ok) {
+      const error = new Error(`HTTP ${response.status}: ${response.statusText}`);
+      error.status = response.status;
+      error.body = data;
+      throw error;
+    }
+
+    return data;
   } catch (error) {
     handleError(error, `safeFetch(${url})`);
     throw error;

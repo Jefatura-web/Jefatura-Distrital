@@ -6,53 +6,140 @@
   <meta name="description" content="Panel administrativo para crear noticias en la Jefatura Distrital Quilmes" />
   <title>Admin Noticias | Jefatura Distrital Quilmes</title>
   <link rel="stylesheet" href="css/estilo.css" />
+  <link rel="stylesheet" href="css/admin-styles.css" />
 </head>
 <body>
+  <div class="admin-topbar">
+    <div class="admin-topbar-content">
+      <a href="/" class="admin-back-link">← Volver a inicio</a>
+      <h1 class="admin-title">Panel administrativo</h1>
+      <span class="admin-status">Sesión activa</span>
+    </div>
+  </div>
+
   <main class="admin-page">
-    <section class="admin-panel">
-      <h1>Panel administrativo de noticias</h1>
-      <p>Usa este formulario para crear noticias desde el backend. No está vinculado desde la página pública.</p>
-      <div class="admin-note">
-        <strong>Token de administración:</strong> ingrésalo aquí para enviar la noticia.
-      </div>
-      <form id="form-crear-noticia" class="admin-form" aria-label="Formulario de creación de noticias">
-        <label for="admin-token">Token de administración</label>
-        <input id="admin-token" type="password" placeholder="Bearer token" autocomplete="off" required />
-
-        <label for="noticia-titulo">Título</label>
-        <input id="noticia-titulo" name="titulo" type="text" placeholder="Título de la noticia" required />
-
-        <label for="noticia-descripcion">Descripción breve</label>
-        <input id="noticia-descripcion" name="descripcion" type="text" placeholder="Descripción corta" />
-
-        <label for="noticia-texto">Texto completo</label>
-        <textarea id="noticia-texto" name="texto" rows="6" placeholder="Contenido de la noticia" required></textarea>
-
-        <label for="noticia-categoria">Categoría (ID)</label>
-        <input id="noticia-categoria" name="categoria_id" type="number" min="1" placeholder="1 = Comunicado" required />
-        <small>Usa el ID de categoría según tu base de datos (ej. 1 = Comunicado, 5 = Institucional).</small>
-
-        <label for="noticia-fecha">Fecha</label>
-        <input id="noticia-fecha" name="fecha" type="date" required />
-
-        <label for="noticia-imagen">URL de imagen (opcional)</label>
-        <input id="noticia-imagen" name="imagen_url" type="text" placeholder="proyecto_distrital.jpg o URL completa" />
-
-        <div class="form-switch">
-          <label><input id="noticia-destacada" name="destacada" type="checkbox" /> Destacada</label>
-          <label><input id="noticia-publicada" name="publicada" type="checkbox" checked /> Publicada</label>
+    <div class="admin-layout">
+      <!-- FORMULARIO -->
+      <section class="admin-form-section">
+        <div class="form-header">
+          <h2 id="noticia-form-title">Crear nueva noticia</h2>
+          <p class="form-hint">Completa el formulario. La vista previa se actualizará automáticamente.</p>
         </div>
 
-        <button type="submit">Crear noticia</button>
-      </form>
+        <form id="form-crear-noticia" class="admin-form" aria-label="Formulario de creación de noticias">
+          <input id="noticia-id" name="id" type="hidden" />
+          <fieldset class="form-fieldset">
+            <legend>Seguridad</legend>
+            <div class="form-group">
+              <label for="admin-token">Token de administración</label>
+              <input id="admin-token" type="password" placeholder="Tu token de acceso" autocomplete="off" required />
+            </div>
+          </fieldset>
 
-      <div id="app-alert" class="app-alert" role="status" aria-live="polite"></div>
+          <fieldset class="form-fieldset">
+            <legend>Información básica</legend>
+            
+            <div class="form-group">
+              <label for="noticia-titulo">Título *</label>
+              <input id="noticia-titulo" name="titulo" type="text" placeholder="Ej: Proyecto Distrital 2026" required />
+            </div>
 
-      <div class="admin-help">
-        <p>Si quieres crear noticias directamente por backend sin usar la página pública, usa este panel o el endpoint <code>POST /noticias</code>.</p>
-      </div>
-    </section>
+            <div class="form-group">
+              <label for="noticia-descripcion">Descripción breve</label>
+              <input id="noticia-descripcion" name="descripcion" type="text" placeholder="Máx. 160 caracteres" maxlength="160" />
+            </div>
+
+            <div class="form-group">
+              <label for="noticia-texto">Texto completo *</label>
+              <textarea id="noticia-texto" name="texto" rows="8" placeholder="Contenido principal de la noticia..." required></textarea>
+            </div>
+          </fieldset>
+
+          <fieldset class="form-fieldset">
+            <legend>Detalles</legend>
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label for="noticia-categoria">Categoría (ID) *</label>
+                <input id="noticia-categoria" name="categoria_id" type="number" min="1" placeholder="1" required />
+                <small>1=Comunicado, 2=Evento, 3=Noticia, 4=Institucional, 5=Otros</small>
+              </div>
+              
+              <div class="form-group">
+                <label for="noticia-fecha">Fecha *</label>
+                <input id="noticia-fecha" name="fecha" type="date" required />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="noticia-imagen">URL de imagen (opcional)</label>
+              <input id="noticia-imagen" name="imagen_url" type="text" placeholder="proyecto_distrital.jpg o https://..." />
+            </div>
+
+            <div class="form-options">
+              <label class="form-checkbox">
+                <input id="noticia-destacada" name="destacada" type="checkbox" />
+                <span>Destacada en portada</span>
+              </label>
+              <label class="form-checkbox">
+                <input id="noticia-publicada" name="publicada" type="checkbox" checked />
+                <span>Publicada inmediatamente</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="form-actions">
+            <button id="form-submit-button" type="submit" class="btn-submit">Crear noticia</button>
+            <button id="form-cancel-button" type="button" class="btn-reset">Cancelar</button>
+          </div>
+        </form>
+
+        <div id="app-alert" class="app-alert" role="status" aria-live="polite"></div>
+      </section>
+
+      <!-- LISTADO ADMIN DE NOTICIAS -->
+      <section class="admin-list-section">
+        <div class="form-header">
+          <h2>Gestionar noticias existentes</h2>
+          <p class="form-hint">Editá o eliminá las noticias desde aquí. Solo se muestran las noticias no eliminadas.</p>
+        </div>
+        <div id="admin-noticias-panel" class="admin-noticias-panel">
+          <div class="admin-loading">Cargando noticias administrativas...</div>
+        </div>
+      </section>
+
+      <!-- VISTA PREVIA -->
+      <section class="admin-preview-section">
+        <div class="preview-header">
+          <h2>Vista previa</h2>
+          <p class="preview-hint">Así se verá la noticia publicada</p>
+        </div>
+
+        <div class="preview-container">
+          <div id="preview-card" class="preview-noticia" aria-live="polite">
+            <div class="pn-imagen azul">
+              <div class="pn-imagen-placeholder">🖼️</div>
+            </div>
+            <div class="pn-body">
+              <div class="pn-categoria">Sin categoría</div>
+              <h3 class="pn-titulo">Tu título aparecerá aquí</h3>
+              <p class="pn-descripcion">La descripción breve también...</p>
+              <p class="pn-texto-preview">El contenido de la noticia se mostrará aquí.</p>
+              <div class="pn-meta">
+                <span class="pn-fecha">Fecha</span>
+                <span class="pn-estado">Estado: Borrador</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
   </main>
+
+  <script>
+    window.JEFATURA_API_BASE_URL = window.JEFATURA_API_BASE_URL || 'https://jefatura-api.onrender.com';
+  </script>
   <script type="module" src="js/admin.js"></script>
+  <script type="module" src="js/adminActions.js"></script>
 </body>
 </html>

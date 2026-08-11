@@ -3,7 +3,7 @@
  * ✅ FIX: img con src vacío reemplazado por placeholder con emoji
  */
 
-import { sanitize, handleError, safeFetch, getElement } from './utils.js';
+import { sanitize, handleError, apiFetch, getElement } from './utils.js';
 
 let allNoticias = [];
 
@@ -40,7 +40,7 @@ const featuredOverride = {
 export async function cargarNoticias() {
   const cacheKey = 'jefatura_noticias_v1';
   try {
-    const noticias = await safeFetch('/noticias');
+    const noticias = await apiFetch('/noticias');
     const normalized = Array.isArray(noticias) ? noticias.map(normalizeNoticia) : [];
     if (normalized.length) {
       allNoticias = normalized;

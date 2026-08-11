@@ -114,11 +114,69 @@
       cursor: pointer;
       transition: all 0.2s;
     }
+    .btn-admin-access {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 42px;
+      padding: 0 14px;
+      border: 1px solid var(--borde);
+      background: linear-gradient(135deg, #0d2154, #173774);
+      color: #fff;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(13, 33, 84, 0.18);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+  /* Nuevo estilo: admin-access con menú */
+  .admin-access { position: relative; display: inline-block; }
+  .admin-access .aa-icon { font-size: 16px; display: inline-block; transform: translateY(-1px); }
+  .admin-access .aa-text { margin: 0 6px; font-weight:700; }
+  .admin-access .aa-caret { opacity: 0.9; }
+  .admin-access .admin-access-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    background: #fff;
+    border: 1px solid var(--borde);
+    border-radius: 10px;
+    box-shadow: 0 12px 30px rgba(13,33,84,0.12);
+    padding: 8px 6px;
+    min-width: 200px;
+    display: none;
+    z-index: 1200;
+  }
+  .admin-access .admin-access-menu.show { display: block; }
+  .admin-access .admin-access-menu li { list-style: none; }
+  .admin-access .menu-btn {
+    width: 100%;
+    display: block;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    text-align: left;
+    color: var(--azul-marino);
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 8px;
+  }
+  .admin-access .menu-btn:hover, .admin-access .menu-btn:focus { background: #f4f7fb; outline: none; }
+  .btn-admin-open { background: linear-gradient(135deg, #2b6ab1, #1a4f8a); }
     .nav-toggle:hover,
     .nav-toggle:focus-visible {
       border-color: var(--celeste);
       background: #e8eef8;
       outline: none;
+    }
+    .btn-admin-access:hover,
+    .btn-admin-access:focus-visible {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 22px rgba(13, 33, 84, 0.24);
+      outline: none;
+      background: linear-gradient(135deg, #173774, #1e4a97);
     }
     .boton-abc {
       background: var(--azul-marino);

@@ -36,6 +36,20 @@
         <input id="search-input" type="search" placeholder="Buscar noticias..." aria-label="Buscar noticias" />
         <span class="search-hint" aria-hidden="true">🔎</span>
       </form>
+
+      <!-- Botón de acceso administrativo mejorado -->
+      <div class="admin-access">
+        <button id="btn-subir-noticias" class="btn-admin-access" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Acceso administrativo">
+          <span class="aa-icon" aria-hidden="true">🔒</span>
+          <span class="aa-text">Acceso</span>
+          <span class="aa-caret" aria-hidden="true">▾</span>
+        </button>
+        <ul id="admin-access-menu" class="admin-access-menu" role="menu" aria-label="Opciones de acceso administrativo" aria-hidden="true">
+          <li role="menuitem"><button id="admin-open-panel" class="menu-btn">Abrir panel</button></li>
+          <li role="menuitem"><button id="admin-use-other" class="menu-btn">Usar otro token</button></li>
+          <li role="menuitem"><button id="admin-clear-token" class="menu-btn">Eliminar token guardado</button></li>
+        </ul>
+      </div>
       <button id="nav-toggle" class="nav-toggle" aria-expanded="false" aria-label="Abrir menú principal">☰</button>
     </div>
   </header>
@@ -48,6 +62,26 @@
   </nav>
 
   <div id="app-alert" class="app-alert" role="status" aria-live="polite"></div>
+
+  <div id="modal-admin-token" class="modal" aria-hidden="true">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="modal-admin-token-title">
+      <div class="modal-header">
+        <h2 id="modal-admin-token-title">Acceso administrativo</h2>
+        <button id="btn-cerrar-token" class="btn-cerrar-modal" type="button" aria-label="Cerrar">×</button>
+      </div>
+      <div class="form-noticia">
+        <p style="margin-bottom: 14px; color: var(--gris-texto);">Ingresá el token de seguridad para abrir el panel de administración.</p>
+        <div class="form-group">
+          <label for="admin-token-input">Token de seguridad</label>
+          <input id="admin-token-input" name="admin-token-input" type="password" placeholder="Bearer token" autocomplete="off" />
+        </div>
+        <div class="form-actions">
+          <button id="btn-cancelar-token" class="btn-secondary" type="button">Cancelar</button>
+          <button id="btn-validar-token" class="btn-primary" type="button">Entrar al panel</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- CONTENIDO PRINCIPAL -->
   <div class="main-layout">
@@ -309,6 +343,9 @@
       <span>© 2026 Jefatura Distrital Quilmes — DGCyE Provincia de Buenos Aires</span>
     </div>
   </footer>
+  <script>
+    window.JEFATURA_API_BASE_URL = window.JEFATURA_API_BASE_URL || 'https://jefatura-api.onrender.com';
+  </script>
   <script type="module" src="js/main.js" defer></script>
 </body>
 </html>

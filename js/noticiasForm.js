@@ -1,69 +1,55 @@
 /**
  * Módulo de Formulario de Noticias
- * Maneja creación de noticias con recarga automática
+ * Maneja creación y edición de noticias con recarga automática
  */
 
-import { getElement, sanitize, handleError, safeFetch } from './utils.js';
+import { getElement, sanitize, handleError, apiFetch } from './utils.js';
 import { renderNoticiasList, cargarNoticias, showAppAlert } from './news.js';
 import { renderCalendar } from './calendar.js';
 
-export function initNoticiasForm() {
-  const btnCrear = getElement('#btn-crear-noticia');
-  const modal = getElement('#modal-crear-noticia');
-  const btnCerrar = getElement('#btn-cerrar-modal');
-  const btnCancelar = getElement('#btn-cancelar-noticia');
+export function initNoticiasForm(onSubmitSuccess) {
   const form = getElement('#form-crear-noticia');
+  const submitButton = getElement('#form-submit-button');
 
   if (!form) return;
 
-  if (btnCrear && modal) {
-    btnCrear.addEventListener('click', (e) => {
-      e.preventDefault();
-      abrirModal(modal);
-    });
-
-    if (btnCerrar) btnCerrar.addEventListener('click', () => cerrarModal(modal));
-    if (btnCancelar) btnCancelar.addEventListener('click', () => cerrarModal(modal));
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) cerrarModal(modal);
-    });
-  }
-
-  form.addEventListener('submit', (e) => enviarFormulario(e, modal));
+  form.addEventListener('submit', (e) => enviarFormulario(e, onSubmitSuccess));
 
   const inputFecha = getElement('#noticia-fecha');
   if (inputFecha) {
-    const today = new Date().toISOString().split('T')[0];
-    inputFecha.value = today;
+    inputFecha.value = new Date().toISOString().split('T')[0];
   }
+
+  if (submitButton) {
+    submitButton.textContent = 'Crear noticia';
+  }
+
+  resetNoticiaForm(false);
 }
 
-function abrirModal(modal) {
-  modal.setAttribute('aria-hidden', 'false');
-  modal.classList.add('visible');
-  document.body.style.overflow = 'hidden';
-  const input = getElement('#noticia-titulo');
-  if (input) input.focus();
-}
-
-function cerrarModal(modal) {
-  modal.setAttribute('aria-hidden', 'true');
-  modal.classList.remove('visible');
-  document.body.style.overflow = '';
-  getElement('#form-crear-noticia').reset();
+function resetNoticiaForm(clearToken = true) {
+  const form = getElement('#form-crear-noticia');
+  if (!form) return;
+  form.reset();
   const inputFecha = getElement('#noticia-fecha');
   if (inputFecha) {
-    const today = new Date().toISOString().split('T')[0];
-    inputFecha.value = today;
+    inputFecha.value = new Date().toISOString().split('T')[0];
+  }
+  if (clearToken) {
+    const tokenInput = getElement('#admin-token');
+    if (tokenInput) tokenInput.value = sessionStorage.getItem('jefatura_admin_token') || '';
   }
 }
 
-async function enviarFormulario(event, modal) {
+async function enviarFormulario(event, onSubmitSuccess) {
   event.preventDefault();
 
   const form = getElement('#form-crear-noticia');
   const tokenInput = getElement('#admin-token');
+  if (!form) return;
+
   const formData = new FormData(form);
+  const noticiaId = String(formData.get('id') || '').trim();
   const data = {
     titulo: formData.get('titulo'),
     descripcion: formData.get('descripcion'),
@@ -77,27 +63,28 @@ async function enviarFormulario(event, modal) {
 
   let tokenRaw = tokenInput?.value.trim() || '';
   if (!tokenRaw) {
-    showAppAlert('Debes ingresar el token de administración para crear noticias.', 'error');
+    showAppAlert('Debes ingresar el token de administración para continuar.', 'error');
     return;
   }
-  // Normalizar token: aceptar tanto 'Bearer x' como 'x'
   const token = tokenRaw.replace(/^Bearer\s+/i, '');
 
-  // Validación adicional en cliente
   if (!data.titulo || !data.texto || !data.categoria_id || !data.fecha) {
     showAppAlert('Por favor completa todos los campos requeridos.', 'error');
     return;
   }
 
-  try {
-    const btnSubmit = getElement('#form-crear-noticia button[type="submit"]');
-    if (btnSubmit) {
-      btnSubmit.disabled = true;
-      btnSubmit.textContent = 'Creando...';
-    }
+  const isUpdate = noticiaId.length > 0;
+  const btnSubmit = getElement('#form-submit-button');
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.textContent = isUpdate ? 'Actualizando...' : 'Creando...';
+  }
 
-    const result = await safeFetch('/noticias', {
-      method: 'POST',
+  try {
+    const endpoint = isUpdate ? `/noticias/${encodeURIComponent(noticiaId)}` : '/noticias';
+    const method = isUpdate ? 'PUT' : 'POST';
+    const result = await apiFetch(endpoint, {
+      method,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
@@ -106,26 +93,30 @@ async function enviarFormulario(event, modal) {
     });
 
     if (result && result.ok) {
-      cerrarModal(modal);
-      showAppAlert('✅ Noticia creada exitosamente. Se actualizará automáticamente.', 'success');
+      resetNoticiaForm(false);
+      if (btnSubmit) btnSubmit.textContent = 'Crear noticia';
+      showAppAlert(isUpdate ? '✅ Noticia actualizada exitosamente.' : '✅ Noticia creada exitosamente.', 'success');
 
-      setTimeout(async () => {
-        await cargarNoticias();
-        if (typeof renderCalendar === 'function') {
-          renderCalendar();
-        }
-      }, 500);
+      if (typeof onSubmitSuccess === 'function') {
+        await onSubmitSuccess();
+      } else {
+        setTimeout(async () => {
+          await cargarNoticias();
+          if (typeof renderCalendar === 'function') {
+            renderCalendar();
+          }
+        }, 500);
+      }
     } else {
-      showAppAlert(result?.error || 'Error al crear la noticia. Intenta nuevamente.', 'error');
+      showAppAlert(result?.error || (isUpdate ? 'Error al actualizar la noticia.' : 'Error al crear la noticia.'), 'error');
     }
   } catch (error) {
     handleError(error, 'enviarFormulario');
-    showAppAlert('No se pudo crear la noticia. Verifica la conexión y el token.', 'error');
+    showAppAlert('No se pudo guardar la noticia. Verifica la conexión y el token.', 'error');
   } finally {
-    const btnSubmit = getElement('#form-crear-noticia button[type="submit"]');
     if (btnSubmit) {
       btnSubmit.disabled = false;
-      btnSubmit.textContent = 'Crear noticia';
+      btnSubmit.textContent = isUpdate ? 'Actualizar noticia' : 'Crear noticia';
     }
   }
 }

@@ -35,18 +35,9 @@ const db = mysql.createConnection({
   database: config.database.database
 });
 
-db.connect(err => {
-  if (err) {
-    console.error('❌ Error de conexión MySQL:', err.message || err);
-    console.error('Asegúrate de que MySQL esté instalado, que el servicio esté activo y que las credenciales en .env sean correctas.');
-    process.exit(1);
-  }
+let server = null;
 
-  console.log('✅ Conectado a MySQL:', `${config.database.host}/${config.database.database}`);
-
-  // Pasar conexión al controlador
-  noticiasController.setDatabase(db);
-
+const startServer = () => {
   // ===============================
   // RUTAS ESTÁTICAS
   // ===============================
@@ -78,7 +69,7 @@ db.connect(err => {
   // ===============================
   // INICIAR SERVIDOR
   // ===============================
-  const server = app.listen(config.port, () => {
+  server = app.listen(config.port, () => {
     console.log(`\n🚀 Servidor iniciado en http://localhost:${config.port}`);
     console.log(`📋 Entorno: ${config.env}`);
     console.log(`🗄️  Base de datos: ${config.database.database}`);
@@ -88,12 +79,29 @@ db.connect(err => {
     console.log(`  GET  http://localhost:${config.port}/noticias - Obtener noticias`);
     console.log(`  POST http://localhost:${config.port}/noticias - Crear noticia\n`);
   });
+};
 
-  // ===============================
-  // MANEJO DE CIERRE GRACEFUL
-  // ===============================
-  process.on('SIGTERM', () => {
-    console.log('\n⛔ SIGTERM recibido, cerrando servidor...');
+db.connect(err => {
+  if (err) {
+    console.warn('⚠️ No se pudo conectar a MySQL:', err.message || err);
+    console.warn('Continuando sin conexión a la base de datos — algunas rutas pueden no funcionar.');
+    // No hacemos process.exit; arrancamos el servidor para poder probar endpoints que no dependen de la BD (por ejemplo verificación de token).
+    startServer();
+    return;
+  }
+
+  console.log('✅ Conectado a MySQL:', `${config.database.host}/${config.database.database}`);
+  // Pasar conexión al controlador
+  noticiasController.setDatabase(db);
+  startServer();
+});
+
+// ===============================
+// MANEJO DE CIERRE GRACEFUL
+// ===============================
+process.on('SIGTERM', () => {
+  console.log('\n⛔ SIGTERM recibido, cerrando servidor...');
+  if (server) {
     server.close(() => {
       console.log('✅ Servidor cerrado');
       db.end(() => {
@@ -101,10 +109,14 @@ db.connect(err => {
         process.exit(0);
       });
     });
-  });
+  } else {
+    process.exit(0);
+  }
+});
 
-  process.on('SIGINT', () => {
-    console.log('\n⛔ SIGINT recibido, cerrando servidor...');
+process.on('SIGINT', () => {
+  console.log('\n⛔ SIGINT recibido, cerrando servidor...');
+  if (server) {
     server.close(() => {
       console.log('✅ Servidor cerrado');
       db.end(() => {
@@ -112,5 +124,7 @@ db.connect(err => {
         process.exit(0);
       });
     });
-  });
+  } else {
+    process.exit(0);
+  }
 });

@@ -56,6 +56,29 @@ function generateSlug(titulo) {
     .replace(/-+/g, '-');
 }
 
+function generateUniqueSlug(baseSlug, callback) {
+  const candidate = String(baseSlug || '').trim().substring(0, 300) || 'noticia';
+
+  db.query(
+    'SELECT slug FROM noticias WHERE slug = ? OR slug LIKE ? ORDER BY id DESC',
+    [candidate, `${candidate}-%`],
+    (err, rows) => {
+      if (err) return callback(err);
+
+      const usedSlugs = new Set((rows || []).map(row => String(row.slug)));
+      let slug = candidate;
+      let suffix = 2;
+
+      while (usedSlugs.has(slug)) {
+        slug = `${candidate}-${suffix}`;
+        suffix += 1;
+      }
+
+      callback(null, slug);
+    }
+  );
+}
+
 function sanitizeHTML(str) {
   if (typeof str !== 'string') return '';
   return str
@@ -251,6 +274,129 @@ function getById(req, res) {
   );
 }
 
+function getAllAdmin(req, res) {
+  if (!db) {
+    return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  }
+
+  const {
+    fecha,
+    destacada,
+    categoria,
+    search,
+    page = 1,
+    limit = 50
+  } = req.query;
+
+  const conditions = [];
+  const params = [];
+
+  if (fecha) {
+    conditions.push('n.fecha = ?');
+    params.push(String(fecha));
+  }
+
+  if (typeof destacada !== 'undefined') {
+    const value = ['1', 'true', 'yes'].includes(String(destacada).toLowerCase()) ? 1 : 0;
+    conditions.push('n.destacada = ?');
+    params.push(value);
+  }
+
+  if (categoria) {
+    conditions.push('c.nombre LIKE ?');
+    params.push(`%${categoria}%`);
+  }
+
+  if (search) {
+    conditions.push('MATCH(n.titulo, n.texto) AGAINST(? IN NATURAL LANGUAGE MODE)');
+    params.push(search);
+  }
+
+  // Solo noticias no eliminadas (soft delete)
+  conditions.push('n.deleted_at IS NULL');
+
+  let sql = `SELECT
+      n.id,
+      n.titulo,
+      n.slug,
+      n.descripcion,
+      n.texto,
+      n.fecha,
+      n.imagen_url AS imagen,
+      n.destacada,
+      n.publicada,
+      n.created_at,
+      n.updated_at,
+      c.nombre AS categoria,
+      c.icono AS categoria_icono,
+      n.categoria_id
+    FROM noticias n
+    LEFT JOIN categorias c ON n.categoria_id = c.id`;
+
+  if (conditions.length) {
+    sql += ` WHERE ${conditions.join(' AND ')}`;
+  }
+
+  sql += ' ORDER BY n.fecha DESC, n.created_at DESC';
+
+  const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+  sql += ` LIMIT ${parseInt(limit, 10)} OFFSET ${offset}`;
+
+  db.query(sql, params, (err, results) => {
+    if (err) {
+      console.error('[DB Error] getAllAdmin:', err);
+      return res.status(500).json({
+        error: 'Error al obtener noticias administrativas',
+        details: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    res.json(results || []);
+  });
+}
+
+function getByIdAdmin(req, res) {
+  if (!db) {
+    return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  }
+
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) {
+    return res.status(400).json({ error: 'ID de noticia inválido' });
+  }
+
+  db.query(
+    `SELECT
+      n.id,
+      n.titulo,
+      n.texto,
+      n.fecha,
+      n.imagen_url AS imagen,
+      n.destacada,
+      n.publicada,
+      n.categoria_id,
+      n.created_at,
+      c.nombre AS categoria
+    FROM noticias n
+    LEFT JOIN categorias c ON n.categoria_id = c.id
+    WHERE n.id = ? AND n.deleted_at IS NULL
+    LIMIT 1`,
+    [id],
+    (err, results) => {
+      if (err) {
+        console.error('[DB Error] getByIdAdmin:', err);
+        return res.status(500).json({ 
+          error: 'Error al obtener la noticia',
+          details: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
+      }
+      if (!results || results.length === 0) {
+        return res.status(404).json({ error: 'Noticia no encontrada' });
+      }
+      res.json(results[0]);
+    }
+  );
+}
+
 function getBySlug(req, res) {
   if (!db) {
     return res.status(500).json({ error: 'Conexión a BD no disponible' });
@@ -383,10 +529,11 @@ function create(req, res) {
     });
   }
 
-  const slug = generateSlug(titulo);
+  const sanitizedTitle = String(titulo).trim().substring(0, 255);
+  const baseSlug = generateSlug(sanitizedTitle).substring(0, 300);
   const sanitizedData = {
-    titulo: String(titulo).trim().substring(0, 255),
-    slug: slug.substring(0, 300),
+    titulo: sanitizedTitle,
+    slug: baseSlug,
     descripcion: descripcion ? String(descripcion).trim().substring(0, 500) : null,
     texto: String(texto).trim(),
     categoria_id: parseInt(categoria_id, 10),
@@ -404,28 +551,36 @@ function create(req, res) {
     return res.status(400).json({ error: 'fecha debe estar en formato YYYY-MM-DD' });
   }
 
-  db.query(
-    `INSERT INTO noticias (titulo, slug, descripcion, texto, categoria_id, fecha, imagen_url, destacada, publicada)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      sanitizedData.titulo,
-      sanitizedData.slug,
-      sanitizedData.descripcion,
-      sanitizedData.texto,
-      sanitizedData.categoria_id,
-      sanitizedData.fecha,
-      sanitizedData.imagen_url,
-      sanitizedData.destacada,
-      sanitizedData.publicada
-    ],
-    (err, result) => {
-      if (err) {
-        console.error('[DB Error] create:', err);
-        return res.status(500).json({ 
-          error: 'Error al crear noticia',
-          details: process.env.NODE_ENV === 'development' ? err.message : undefined
-        });
-      }
+  generateUniqueSlug(baseSlug, (slugErr, uniqueSlug) => {
+    if (slugErr) {
+      console.error('[DB Error] generateUniqueSlug:', slugErr);
+      return res.status(500).json({ error: 'Error al generar slug de la noticia' });
+    }
+
+    sanitizedData.slug = uniqueSlug;
+
+    db.query(
+      `INSERT INTO noticias (titulo, slug, descripcion, texto, categoria_id, fecha, imagen_url, destacada, publicada)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        sanitizedData.titulo,
+        sanitizedData.slug,
+        sanitizedData.descripcion,
+        sanitizedData.texto,
+        sanitizedData.categoria_id,
+        sanitizedData.fecha,
+        sanitizedData.imagen_url,
+        sanitizedData.destacada,
+        sanitizedData.publicada
+      ],
+      (err, result) => {
+        if (err) {
+          console.error('[DB Error] create:', err);
+          return res.status(500).json({ 
+            error: 'Error al crear noticia',
+            details: process.env.NODE_ENV === 'development' ? err.message : undefined
+          });
+        }
 
       // Devolver la noticia creada con los datos completos
       db.query(
@@ -462,7 +617,8 @@ function create(req, res) {
         }
       );
     }
-  );
+    );
+  });
 }
 
 /**
@@ -634,7 +790,9 @@ function remove(req, res) {
 module.exports = {
   setDatabase,
   getAll,
+  getAllAdmin,
   getById,
+  getByIdAdmin,
   getBySlug,
   getStats,
   create,

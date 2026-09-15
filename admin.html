@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Panel administrativo para crear noticias en la Jefatura Distrital Quilmes" />
+  <title>Admin Noticias | Jefatura Distrital Quilmes</title>
+  <link rel="stylesheet" href="css/estilo.css" />
+  <link rel="stylesheet" href="css/admin-styles.css" />
+</head>
+<body>
+  <div class="admin-topbar">
+    <div class="admin-topbar-content">
+      <a href="/" class="admin-back-link">← Volver a inicio</a>
+      <h1 class="admin-title">Panel administrativo</h1>
+      <span class="admin-status">Sesión activa</span>
+    </div>
+  </div>
+
+  <main class="admin-page">
+    <div class="admin-layout">
+      <!-- FORMULARIO -->
+      <section class="admin-form-section">
+        <div class="form-header">
+          <h2 id="noticia-form-title">Crear nueva noticia</h2>
+          <p class="form-hint">Completa el formulario. La vista previa se actualizará automáticamente.</p>
+        </div>
+
+        <form id="form-crear-noticia" class="admin-form" aria-label="Formulario de creación de noticias">
+          <input id="noticia-id" name="id" type="hidden" />
+          <fieldset class="form-fieldset">
+            <legend>Seguridad</legend>
+            <div class="form-group">
+              <label for="admin-token">Token de administración</label>
+              <input id="admin-token" type="password" placeholder="Tu token de acceso" autocomplete="off" required />
+            </div>
+          </fieldset>
+
+          <fieldset class="form-fieldset">
+            <legend>Información básica</legend>
+            
+            <div class="form-group">
+              <label for="noticia-titulo">Título *</label>
+              <input id="noticia-titulo" name="titulo" type="text" placeholder="Ej: Proyecto Distrital 2026" required />
+            </div>
+
+            <div class="form-group">
+              <label for="noticia-descripcion">Descripción breve</label>
+              <input id="noticia-descripcion" name="descripcion" type="text" placeholder="Máx. 160 caracteres" maxlength="160" />
+            </div>
+
+            <div class="form-group">
+              <label for="noticia-texto">Texto completo *</label>
+              <textarea id="noticia-texto" name="texto" rows="8" placeholder="Contenido principal de la noticia..." required></textarea>
+            </div>
+          </fieldset>
+
+          <fieldset class="form-fieldset">
+            <legend>Detalles</legend>
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label for="noticia-categoria">Categoría (ID) *</label>
+                <input id="noticia-categoria" name="categoria_id" type="number" min="1" placeholder="1" required />
+                <small>1=Comunicado, 2=Evento, 3=Noticia, 4=Institucional, 5=Otros</small>
+              </div>
+              
+              <div class="form-group">
+                <label for="noticia-fecha">Fecha *</label>
+                <input id="noticia-fecha" name="fecha" type="date" required />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="noticia-imagen">URL de imagen (opcional)</label>
+              <input id="noticia-imagen" name="imagen_url" type="text" placeholder="proyecto_distrital.jpg o https://..." />
+            </div>
+
+            <div class="form-options">
+              <label class="form-checkbox">
+                <input id="noticia-destacada" name="destacada" type="checkbox" />
+                <span>Destacada en portada</span>
+              </label>
+              <label class="form-checkbox">
+                <input id="noticia-publicada" name="publicada" type="checkbox" checked />
+                <span>Publicada inmediatamente</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="form-actions">
+            <button id="form-submit-button" type="submit" class="btn-submit">Crear noticia</button>
+            <button id="form-cancel-button" type="button" class="btn-reset">Cancelar</button>
+          </div>
+        </form>
+
+        <div id="app-alert" class="app-alert" role="status" aria-live="polite"></div>
+      </section>
+
+      <!-- LISTADO ADMIN DE NOTICIAS -->
+      <section class="admin-list-section">
+        <div class="form-header">
+          <h2>Gestionar noticias existentes</h2>
+          <p class="form-hint">Editá o eliminá las noticias desde aquí. Solo se muestran las noticias no eliminadas.</p>
+        </div>
+        <div id="admin-noticias-panel" class="admin-noticias-panel">
+          <div class="admin-loading">Cargando noticias administrativas...</div>
+        </div>
+      </section>
+
+      <!-- VISTA PREVIA -->
+      <section class="admin-preview-section">
+        <div class="preview-header">
+          <h2>Vista previa</h2>
+          <p class="preview-hint">Así se verá la noticia publicada</p>
+        </div>
+
+        <div class="preview-container">
+          <div id="preview-card" class="preview-noticia" aria-live="polite">
+            <div class="pn-imagen azul">
+              <div class="pn-imagen-placeholder">🖼️</div>
+            </div>
+            <div class="pn-body">
+              <div class="pn-categoria">Sin categoría</div>
+              <h3 class="pn-titulo">Tu título aparecerá aquí</h3>
+              <p class="pn-descripcion">La descripción breve también...</p>
+              <p class="pn-texto-preview">El contenido de la noticia se mostrará aquí.</p>
+              <div class="pn-meta">
+                <span class="pn-fecha">Fecha</span>
+                <span class="pn-estado">Estado: Borrador</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ACTIVIDADES DE INSPECTORES POR NIVEL -->
+    <section class="admin-form-section" style="max-width:1400px;margin:24px auto 0;">
+      <div class="form-header">
+        <h2 id="actividad-form-title">Cargar actividad de inspector</h2>
+        <p class="form-hint">Elegí nivel, grado y mes. Podés cargar varias fotos (una URL por línea).</p>
+      </div>
+
+      <form id="form-crear-actividad" class="admin-form" aria-label="Formulario de actividades de inspectores">
+        <input id="actividad-id" name="id" type="hidden" />
+        <fieldset class="form-fieldset">
+          <legend>Seguridad</legend>
+          <div class="form-group">
+            <label for="actividad-token">Token de administración</label>
+            <input id="actividad-token" type="password" placeholder="Tu token de acceso" autocomplete="off" required />
+          </div>
+        </fieldset>
+
+        <fieldset class="form-fieldset">
+          <legend>Ubicación</legend>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="actividad-nivel">Nivel *</label>
+              <select id="actividad-nivel" name="nivel" required>
+                <option value="inicial">Inicial</option>
+                <option value="primaria">Primaria</option>
+                <option value="secundaria">Secundaria</option>
+                <option value="tecnica">Técnica</option>
+                <option value="agraria">Agraria</option>
+                <option value="superior">Superior</option>
+                <option value="especial">Especial</option>
+                <option value="pcyps">PCYPS</option>
+                <option value="dejayam">DEJAYAM</option>
+                <option value="ed-fisica">Educación Física</option>
+                <option value="ed-artistica">Educación Artística</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="actividad-grado">Grado / Sala *</label>
+              <input id="actividad-grado" name="grado" type="text" placeholder="Ej: Sala de 4, 6to grado A" required />
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="actividad-mes">Mes *</label>
+            <input id="actividad-mes" name="mes" type="month" required />
+          </div>
+        </fieldset>
+
+        <fieldset class="form-fieldset">
+          <legend>Contenido</legend>
+          <div class="form-group">
+            <label for="actividad-titulo">Título *</label>
+            <input id="actividad-titulo" name="titulo" type="text" placeholder="Ej: Acompañamiento pedagógico" required />
+          </div>
+          <div class="form-group">
+            <label for="actividad-inspector">Nombre del inspector (opcional)</label>
+            <input id="actividad-inspector" name="inspector_nombre" type="text" placeholder="Nombre y apellido" />
+          </div>
+          <div class="form-group">
+            <label for="actividad-descripcion">Descripción</label>
+            <textarea id="actividad-descripcion" name="descripcion" rows="5" placeholder="Qué se hizo, observaciones, etc."></textarea>
+          </div>
+          <div class="form-group">
+            <label for="actividad-imagenes">Fotos (una URL por línea)</label>
+            <textarea id="actividad-imagenes" name="imagenes" rows="4" placeholder="https://.../foto1.jpg&#10;https://.../foto2.jpg"></textarea>
+            <small>Al editar una actividad, esto reemplaza la galería completa por lo que escribas acá.</small>
+          </div>
+        </fieldset>
+
+        <div class="form-actions">
+          <button id="actividad-submit-button" type="submit" class="btn-submit">Crear actividad</button>
+          <button id="actividad-cancel-button" type="button" class="btn-reset">Cancelar</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="admin-form-section" style="max-width:1400px;margin:24px auto 40px;">
+      <div class="form-header">
+        <h2>Actividades cargadas</h2>
+        <p class="form-hint">Editá o eliminá actividades existentes. Filtrá por nivel si querés.</p>
+      </div>
+      <div class="form-group" style="max-width:280px;">
+        <label for="actividad-filtro-nivel">Filtrar por nivel</label>
+        <select id="actividad-filtro-nivel">
+          <option value="">Todos los niveles</option>
+          <option value="inicial">Inicial</option>
+          <option value="primaria">Primaria</option>
+          <option value="secundaria">Secundaria</option>
+          <option value="tecnica">Técnica</option>
+          <option value="agraria">Agraria</option>
+          <option value="superior">Superior</option>
+          <option value="especial">Especial</option>
+          <option value="pcyps">PCYPS</option>
+          <option value="dejayam">DEJAYAM</option>
+          <option value="ed-fisica">Educación Física</option>
+          <option value="ed-artistica">Educación Artística</option>
+        </select>
+      </div>
+      <div id="admin-actividades-panel" class="admin-noticias-panel">
+        <div class="admin-loading">Cargando actividades…</div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>

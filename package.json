@@ -1,0 +1,29 @@
+{
+  "name": "jefatura",
+  "version": "1.0.0",
+  "description": "Sistema de gestión de información para la Jefatura Distrital Quilmes — DGCyE Provincia de Buenos Aires",
+  "main": "js/server.js",
+  "scripts": {
+    "start": "node js/server.js",
+    "dev": "node js/server.js",
+    "diagnose": "node diagnostico.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "jefatura",
+    "educación",
+    "quilmes",
+    "dgcye",
+    "argentina"
+  ],
+  "author": "Jefatura Distrital Quilmes",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
+    "mysql2": "^3.22.3"
+  }
+}
+

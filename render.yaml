@@ -1,0 +1,47 @@
+# render.yaml — Configuración de deploy para Render.com
+# Documentación: https://render.com/docs/blueprint-spec
+#
+# Este servicio sirve tanto el frontend estático como la API Express.
+# No se necesita un servicio separado de base de datos: se usa TiDB Serverless.
+
+services:
+  - type: web
+    name: jefatura-quilmes
+    runtime: node
+    buildCommand: npm install
+    startCommand: node js/server.js
+    healthCheckPath: /noticias
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # Render asigna PORT automáticamente; no lo sobreescribir.
+
+      # ── TiDB Serverless ──────────────────────────────────────────────────────
+      # Completar estos valores en el dashboard de Render → Environment
+      # (NO commitear valores reales al repo)
+      - key: DB_HOST
+        sync: false   # gateway01.us-east-1.prod.aws.tidbcloud.com
+
+      - key: DB_PORT
+        value: "4000"
+
+      - key: DB_USER
+        sync: false   # formato: <prefix>.root
+
+      - key: DB_PASSWORD
+        sync: false
+
+      - key: DB_NAME
+        value: jefatura_db
+
+      # ── Seguridad ─────────────────────────────────────────────────────────────
+      - key: ADMIN_TOKEN
+        sync: false   # Elegir un token fuerte; NO usar el del .env local
+
+      # ── CORS ──────────────────────────────────────────────────────────────────
+      # Una vez desplegado, reemplazar * por la URL real de Render:
+      # Ej: https://jefatura-quilmes.onrender.com
+      - key: CORS_ORIGIN
+        value: "*"

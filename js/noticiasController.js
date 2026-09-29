@@ -4,6 +4,7 @@
  */
 
 const mysql = require('mysql2');
+const crypto = require('crypto');
 
 let db = null;
 let categoriasCache = null;
@@ -14,18 +15,30 @@ function setDatabase(database) {
   db = database;
 }
 
-// Middleware de autenticación básica
+// ── Autenticación compartida (usada también por actividadesController.js) ─────
+function timingSafeEqual(a, b) {
+  const sa = Buffer.from(String(a || ''));
+  const sb = Buffer.from(String(b || ''));
+  if (sa.length !== sb.length) return false;
+  return crypto.timingSafeEqual(sa, sb);
+}
+
 function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
-  const token = process.env.ADMIN_TOKEN || 'admin123'; // Token simple por defecto
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  const normalizedToken = String(token || '').replace(/^Bearer\s+/i, '').trim();
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!normalizedToken) {
     return res.status(401).json({ error: 'Token de autenticación requerido' });
   }
 
-  const providedToken = authHeader.substring(7); // Remover 'Bearer '
-  if (providedToken !== token) {
-    return res.status(403).json({ error: 'Token inválido' });
+  if (!process.env.ADMIN_TOKEN) {
+    console.error('[requireAuth] ADMIN_TOKEN no está configurado en las variables de entorno.');
+    return res.status(500).json({ error: 'Autenticación no configurada en el servidor' });
+  }
+
+  if (!timingSafeEqual(normalizedToken, process.env.ADMIN_TOKEN)) {
+    return res.status(403).json({ error: 'Token de autenticación inválido' });
   }
 
   next();
@@ -789,6 +802,8 @@ function remove(req, res) {
 
 module.exports = {
   setDatabase,
+  requireAuth,
+  timingSafeEqual,
   getAll,
   getAllAdmin,
   getById,

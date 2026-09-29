@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Actividades de inspectores por nivel - Jefatura Distrital Quilmes" />
+  <title>Nivel | Jefatura Distrital Quilmes</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=Source+Sans+3:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/estilo.css" />
+</head>
+<body>
+
+  <div class="topbar" role="banner">
+    <span>Dirección General de Cultura y Educación — Provincia de Buenos Aires</span>
+  </div>
+
+  <div class="nivel-page">
+    <a href="/" class="nivel-back-link">← Volver a inicio</a>
+
+    <div class="nivel-header">
+      <span class="nivel-icono" id="nivel-icono" aria-hidden="true">📚</span>
+      <h1 id="nivel-titulo">Cargando nivel…</h1>
+    </div>
+
+    <div class="nivel-meses" id="nivel-meses" role="tablist" aria-label="Seleccionar mes"></div>
+
+    <div id="nivel-contenido" aria-live="polite">
+      <div class="nivel-loading">Cargando actividades…</div>
+    </div>
+  </div>
+
+  <div id="nivel-detalle-modal" aria-hidden="true">
+    <div class="nivel-detalle-content" role="dialog" aria-modal="true">
+      <button id="nivel-detalle-cerrar" class="nivel-detalle-cerrar" type="button" aria-label="Cerrar">×</button>
+      <div id="nivel-detalle-body"></div>
+    </div>
+  </div>
+
+  <script type="module" src="js/actividades.js"></script>
+</body>
+</html>

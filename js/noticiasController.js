@@ -1,21 +1,21 @@
 /**
- * Actividades de Inspectores — controller + rutas en un solo archivo.
- * requireAuth definido localmente (sin importar de noticiasController).
+ * Controlador de Noticias
+ * Maneja lógica de negocio para noticias
  */
 
-const express = require('express');
-const crypto  = require('crypto');
+const mysql = require('mysql2');
+const crypto = require('crypto');
 
 let db = null;
+let categoriasCache = null;
+let cacheTimestamp = 0;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
 
-const NIVELES_VALIDOS = [
-  'inicial','primaria','secundaria','tecnica','agraria',
-  'superior','especial','pcyps','dejayam','ed-fisica','ed-artistica'
-];
+function setDatabase(database) {
+  db = database;
+}
 
-function setDatabase(database) { db = database; }
-
-// ── Auth local ────────────────────────────────────────────────────────────────
+// ── Autenticación compartida (usada también por actividadesController.js) ─────
 function timingSafeEqual(a, b) {
   const sa = Buffer.from(String(a || ''));
   const sb = Buffer.from(String(b || ''));
@@ -24,230 +24,793 @@ function timingSafeEqual(a, b) {
 }
 
 function requireAuth(req, res, next) {
-  const header = req.headers.authorization || '';
-  const token  = String(header.startsWith('Bearer ') ? header.substring(7) : '')
-    .replace(/^Bearer\s+/i, '').trim();
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  const normalizedToken = String(token || '').replace(/^Bearer\s+/i, '').trim();
 
-  if (!token) return res.status(401).json({ error: 'Token requerido' });
-  if (!process.env.ADMIN_TOKEN) {
-    console.error('[requireAuth] ADMIN_TOKEN no configurado');
-    return res.status(500).json({ error: 'Auth no configurada en el servidor' });
+  if (!normalizedToken) {
+    return res.status(401).json({ error: 'Token de autenticación requerido' });
   }
-  if (!timingSafeEqual(token, process.env.ADMIN_TOKEN))
-    return res.status(403).json({ error: 'Token inválido' });
+
+  if (!process.env.ADMIN_TOKEN) {
+    console.error('[requireAuth] ADMIN_TOKEN no está configurado en las variables de entorno.');
+    return res.status(500).json({ error: 'Autenticación no configurada en el servidor' });
+  }
+
+  if (!timingSafeEqual(normalizedToken, process.env.ADMIN_TOKEN)) {
+    return res.status(403).json({ error: 'Token de autenticación inválido' });
+  }
+
   next();
 }
 
-// ── Validación ────────────────────────────────────────────────────────────────
-function isValidNivel(n) { return NIVELES_VALIDOS.includes(String(n || '').toLowerCase().trim()); }
-function isValidMes(m)   { return /^\d{4}-\d{2}(-\d{2})?$/.test(String(m || '')); }
-function normalizeMes(m) {
-  const match = String(m || '').match(/^(\d{4})-(\d{2})/);
-  return match ? `${match[1]}-${match[2]}-01` : null;
-}
-
-// ── Adjuntar imágenes en lote ─────────────────────────────────────────────────
-function attachImagenes(actividades, cb) {
-  if (!actividades || actividades.length === 0) return cb(null, actividades);
-  const ids = actividades.map(a => a.id);
-  db.query(
-    'SELECT actividad_id, imagen_url, orden FROM actividades_imagenes WHERE actividad_id IN (?) ORDER BY actividad_id, orden, id',
-    [ids],
-    (err, rows) => {
-      if (err) return cb(err);
-      const map = {};
-      (rows || []).forEach(r => {
-        if (!map[r.actividad_id]) map[r.actividad_id] = [];
-        map[r.actividad_id].push(r.imagen_url);
-      });
-      cb(null, actividades.map(a => ({ ...a, imagenes: map[a.id] || [] })));
+// Caché de categorías
+async function getCategoriasCache() {
+  const now = Date.now();
+  if (!categoriasCache || (now - cacheTimestamp) > CACHE_DURATION) {
+    try {
+      const [rows] = await db.promise().query('SELECT id, nombre, icono, color FROM categorias ORDER BY nombre');
+      categoriasCache = rows;
+      cacheTimestamp = now;
+    } catch (error) {
+      console.error('[DB Error] getCategoriasCache:', error);
+      return [];
     }
-  );
-}
-
-// ── Handlers ──────────────────────────────────────────────────────────────────
-function getAll(req, res) {
-  if (!db) return res.status(500).json({ error: 'BD no disponible' });
-
-  const { nivel, mes, grado } = req.query;
-  if (!nivel || !isValidNivel(nivel))
-    return res.status(400).json({ error: `nivel requerido. Válidos: ${NIVELES_VALIDOS.join(', ')}` });
-
-  const cond   = ['nivel = ?', 'deleted_at IS NULL'];
-  const params = [String(nivel).toLowerCase().trim()];
-
-  if (mes) {
-    if (!isValidMes(mes)) return res.status(400).json({ error: 'mes inválido (YYYY-MM)' });
-    cond.push('DATE_FORMAT(mes,"%Y-%m") = DATE_FORMAT(?,"%Y-%m")');
-    params.push(normalizeMes(mes));
   }
-  if (grado) { cond.push('grado = ?'); params.push(String(grado)); }
+  return categoriasCache;
+}
+
+function generateSlug(titulo) {
+  return titulo
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
+function generateUniqueSlug(baseSlug, callback) {
+  const candidate = String(baseSlug || '').trim().substring(0, 300) || 'noticia';
 
   db.query(
-    `SELECT id,nivel,grado,mes,titulo,descripcion,inspector_nombre,created_at,updated_at
-     FROM actividades_inspectores WHERE ${cond.join(' AND ')} ORDER BY mes DESC, grado ASC, id DESC`,
-    params,
+    'SELECT slug FROM noticias WHERE slug = ? OR slug LIKE ? ORDER BY id DESC',
+    [candidate, `${candidate}-%`],
     (err, rows) => {
-      if (err) { console.error('[actividades.getAll]', err); return res.status(500).json({ error: 'Error al obtener actividades' }); }
-      attachImagenes(rows || [], (e, data) => {
-        if (e) return res.status(500).json({ error: 'Error al obtener imágenes' });
-        res.json(data);
-      });
+      if (err) return callback(err);
+
+      const usedSlugs = new Set((rows || []).map(row => String(row.slug)));
+      let slug = candidate;
+      let suffix = 2;
+
+      while (usedSlugs.has(slug)) {
+        slug = `${candidate}-${suffix}`;
+        suffix += 1;
+      }
+
+      callback(null, slug);
     }
   );
+}
+
+function sanitizeHTML(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// Validación mejorada
+function validateNoticiaData(data, isUpdate = false) {
+  const errors = [];
+
+  if (!isUpdate || data.titulo !== undefined) {
+    if (!data.titulo || typeof data.titulo !== 'string' || data.titulo.trim().length < 3) {
+      errors.push('Título requerido (mínimo 3 caracteres)');
+    }
+  }
+
+  if (!isUpdate || data.texto !== undefined) {
+    if (!data.texto || typeof data.texto !== 'string' || data.texto.trim().length < 10) {
+      errors.push('Texto requerido (mínimo 10 caracteres)');
+    }
+  }
+
+  if (!isUpdate || data.categoria_id !== undefined) {
+    if (data.categoria_id === undefined || data.categoria_id === null) {
+      errors.push('Categoría requerida');
+    } else {
+      const catId = parseInt(data.categoria_id, 10);
+      if (isNaN(catId) || catId < 1) {
+        errors.push('ID de categoría inválido');
+      }
+    }
+  }
+
+  if (!isUpdate || data.fecha !== undefined) {
+    if (!data.fecha || !/^\d{4}-\d{2}-\d{2}$/.test(data.fecha)) {
+      errors.push('Fecha requerida en formato YYYY-MM-DD');
+    } else {
+      const fecha = new Date(data.fecha);
+      if (isNaN(fecha.getTime())) {
+        errors.push('Fecha inválida');
+      }
+    }
+  }
+
+  if (data.descripcion && typeof data.descripcion === 'string' && data.descripcion.length > 500) {
+    errors.push('Descripción demasiado larga (máximo 500 caracteres)');
+  }
+
+  if (data.imagen_url && typeof data.imagen_url === 'string' && data.imagen_url.length > 500) {
+    errors.push('URL de imagen demasiado larga (máximo 500 caracteres)');
+  }
+
+  return errors;
+}
+
+/**
+ * Obtiene todas las noticias ordenadas por fecha descendente
+ * ✅ FIX: JOIN con categorias para devolver nombre, no id
+ * ✅ Mejora: Filtros avanzados y paginación
+ */
+function getAll(req, res) {
+  if (!db) {
+    return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  }
+
+  const {
+    fecha,
+    destacada,
+    categoria,
+    publicada,
+    search,
+    page = 1,
+    limit = 50
+  } = req.query;
+
+  const conditions = [];
+  const params = [];
+
+  if (fecha) {
+    conditions.push('n.fecha = ?');
+    params.push(String(fecha));
+  }
+
+  if (typeof destacada !== 'undefined') {
+    const value = ['1', 'true', 'yes'].includes(String(destacada).toLowerCase()) ? 1 : 0;
+    conditions.push('n.destacada = ?');
+    params.push(value);
+  }
+
+  if (categoria) {
+    conditions.push('c.nombre LIKE ?');
+    params.push(`%${categoria}%`);
+  }
+
+  if (typeof publicada !== 'undefined') {
+    const value = ['1', 'true', 'yes'].includes(String(publicada).toLowerCase()) ? 1 : 0;
+    conditions.push('n.publicada = ?');
+    params.push(value);
+  } else {
+    // Por defecto, solo mostrar noticias publicadas en los endpoints públicos.
+    conditions.push('n.publicada = 1');
+  }
+
+  if (search) {
+    conditions.push('MATCH(n.titulo, n.texto) AGAINST(? IN NATURAL LANGUAGE MODE)');
+    params.push(search);
+  }
+
+  // Solo noticias no eliminadas (soft delete)
+  conditions.push('n.deleted_at IS NULL');
+
+  let sql = `SELECT
+      n.id,
+      n.titulo,
+      n.slug,
+      n.descripcion,
+      n.texto,
+      n.fecha,
+      n.imagen_url AS imagen,
+      n.destacada,
+      n.publicada,
+      n.created_at,
+      n.updated_at,
+      c.nombre AS categoria,
+      c.icono AS categoria_icono
+    FROM noticias n
+    LEFT JOIN categorias c ON n.categoria_id = c.id`;
+
+  if (conditions.length) {
+    sql += ` WHERE ${conditions.join(' AND ')}`;
+  }
+
+  sql += ' ORDER BY n.fecha DESC, n.created_at DESC';
+
+  // Paginación
+  const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+  sql += ` LIMIT ${parseInt(limit, 10)} OFFSET ${offset}`;
+
+  db.query(sql, params, (err, results) => {
+    if (err) {
+      console.error('[DB Error] getAll:', err);
+      return res.status(500).json({
+        error: 'Error al obtener noticias',
+        details: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    res.json(results || []);
+  });
 }
 
 function getById(req, res) {
-  if (!db) return res.status(500).json({ error: 'BD no disponible' });
+  if (!db) {
+    return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  }
+
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) return res.status(400).json({ error: 'ID inválido' });
+  if (Number.isNaN(id)) {
+    return res.status(400).json({ error: 'ID de noticia inválido' });
+  }
 
   db.query(
-    'SELECT id,nivel,grado,mes,titulo,descripcion,inspector_nombre,created_at,updated_at FROM actividades_inspectores WHERE id=? AND deleted_at IS NULL LIMIT 1',
+    `SELECT 
+      n.id,
+      n.titulo,
+      n.texto,
+      n.fecha,
+      n.imagen_url AS imagen,
+      n.destacada,
+      n.created_at,
+      c.nombre AS categoria
+    FROM noticias n
+    LEFT JOIN categorias c ON n.categoria_id = c.id
+    WHERE n.id = ? AND n.deleted_at IS NULL AND n.publicada = 1
+    LIMIT 1`,
     [id],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: 'Error al obtener actividad' });
-      if (!rows || rows.length === 0) return res.status(404).json({ error: 'No encontrada' });
-      attachImagenes(rows, (e, data) => {
-        if (e) return res.status(500).json({ error: 'Error al obtener imágenes' });
-        res.json(data[0]);
-      });
+    (err, results) => {
+      if (err) {
+        console.error('[DB Error] getById:', err);
+        return res.status(500).json({ 
+          error: 'Error al obtener la noticia',
+          details: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
+      }
+      if (!results || results.length === 0) {
+        return res.status(404).json({ error: 'Noticia no encontrada' });
+      }
+      res.json(results[0]);
     }
   );
 }
 
 function getAllAdmin(req, res) {
-  if (!db) return res.status(500).json({ error: 'BD no disponible' });
-  const { nivel, page = 1, limit = 50 } = req.query;
-  const cond = ['deleted_at IS NULL'], params = [];
-
-  if (nivel) {
-    if (!isValidNivel(nivel)) return res.status(400).json({ error: 'nivel inválido' });
-    cond.push('nivel = ?'); params.push(String(nivel).toLowerCase().trim());
+  if (!db) {
+    return res.status(500).json({ error: 'Conexión a BD no disponible' });
   }
 
-  const offset = (Math.max(parseInt(page, 10), 1) - 1) * parseInt(limit, 10);
+  const {
+    fecha,
+    destacada,
+    categoria,
+    search,
+    page = 1,
+    limit = 50
+  } = req.query;
+
+  const conditions = [];
+  const params = [];
+
+  if (fecha) {
+    conditions.push('n.fecha = ?');
+    params.push(String(fecha));
+  }
+
+  if (typeof destacada !== 'undefined') {
+    const value = ['1', 'true', 'yes'].includes(String(destacada).toLowerCase()) ? 1 : 0;
+    conditions.push('n.destacada = ?');
+    params.push(value);
+  }
+
+  if (categoria) {
+    conditions.push('c.nombre LIKE ?');
+    params.push(`%${categoria}%`);
+  }
+
+  if (search) {
+    conditions.push('MATCH(n.titulo, n.texto) AGAINST(? IN NATURAL LANGUAGE MODE)');
+    params.push(search);
+  }
+
+  // Solo noticias no eliminadas (soft delete)
+  conditions.push('n.deleted_at IS NULL');
+
+  let sql = `SELECT
+      n.id,
+      n.titulo,
+      n.slug,
+      n.descripcion,
+      n.texto,
+      n.fecha,
+      n.imagen_url AS imagen,
+      n.destacada,
+      n.publicada,
+      n.created_at,
+      n.updated_at,
+      c.nombre AS categoria,
+      c.icono AS categoria_icono,
+      n.categoria_id
+    FROM noticias n
+    LEFT JOIN categorias c ON n.categoria_id = c.id`;
+
+  if (conditions.length) {
+    sql += ` WHERE ${conditions.join(' AND ')}`;
+  }
+
+  sql += ' ORDER BY n.fecha DESC, n.created_at DESC';
+
+  const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+  sql += ` LIMIT ${parseInt(limit, 10)} OFFSET ${offset}`;
+
+  db.query(sql, params, (err, results) => {
+    if (err) {
+      console.error('[DB Error] getAllAdmin:', err);
+      return res.status(500).json({
+        error: 'Error al obtener noticias administrativas',
+        details: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+    res.json(results || []);
+  });
+}
+
+function getByIdAdmin(req, res) {
+  if (!db) {
+    return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  }
+
+  const id = parseInt(req.params.id, 10);
+  if (Number.isNaN(id)) {
+    return res.status(400).json({ error: 'ID de noticia inválido' });
+  }
+
   db.query(
-    `SELECT id,nivel,grado,mes,titulo,descripcion,inspector_nombre,created_at,updated_at
-     FROM actividades_inspectores WHERE ${cond.join(' AND ')} ORDER BY created_at DESC LIMIT ${parseInt(limit,10)} OFFSET ${offset}`,
-    params,
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: 'Error al obtener actividades' });
-      attachImagenes(rows || [], (e, data) => {
-        if (e) return res.status(500).json({ error: 'Error al obtener imágenes' });
-        res.json(data);
+    `SELECT
+      n.id,
+      n.titulo,
+      n.texto,
+      n.fecha,
+      n.imagen_url AS imagen,
+      n.destacada,
+      n.publicada,
+      n.categoria_id,
+      n.created_at,
+      c.nombre AS categoria
+    FROM noticias n
+    LEFT JOIN categorias c ON n.categoria_id = c.id
+    WHERE n.id = ? AND n.deleted_at IS NULL
+    LIMIT 1`,
+    [id],
+    (err, results) => {
+      if (err) {
+        console.error('[DB Error] getByIdAdmin:', err);
+        return res.status(500).json({ 
+          error: 'Error al obtener la noticia',
+          details: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
+      }
+      if (!results || results.length === 0) {
+        return res.status(404).json({ error: 'Noticia no encontrada' });
+      }
+      res.json(results[0]);
+    }
+  );
+}
+
+function getBySlug(req, res) {
+  if (!db) {
+    return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  }
+
+  const { slug } = req.params;
+  if (!slug || typeof slug !== 'string') {
+    return res.status(400).json({ error: 'Slug inválido' });
+  }
+
+  db.query(
+    `SELECT
+      n.id,
+      n.titulo,
+      n.slug,
+      n.descripcion,
+      n.texto,
+      n.fecha,
+      n.imagen_url AS imagen,
+      n.destacada,
+      n.publicada,
+      n.created_at,
+      n.updated_at,
+      c.nombre AS categoria,
+      c.icono AS categoria_icono
+    FROM noticias n
+    LEFT JOIN categorias c ON n.categoria_id = c.id
+    WHERE n.slug = ? AND n.deleted_at IS NULL AND n.publicada = 1
+    LIMIT 1`,
+    [slug],
+    (err, results) => {
+      if (err) {
+        console.error('[DB Error] getBySlug:', err);
+        return res.status(500).json({
+          error: 'Error al obtener la noticia',
+          details: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
+      }
+      if (!results || results.length === 0) {
+        return res.status(404).json({ error: 'Noticia no encontrada' });
+      }
+      res.json(results[0]);
+    }
+  );
+}
+
+/**
+ * Estadísticas de noticias
+ */
+function getStats(req, res) {
+  if (!db) {
+    return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  }
+
+  const queries = [
+    // Total de noticias
+    'SELECT COUNT(*) as total FROM noticias WHERE deleted_at IS NULL',
+
+    // Noticias por mes (últimos 12 meses)
+    `SELECT
+      DATE_FORMAT(fecha, '%Y-%m') as mes,
+      COUNT(*) as cantidad
+    FROM noticias
+    WHERE deleted_at IS NULL AND fecha >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+    GROUP BY DATE_FORMAT(fecha, '%Y-%m')
+    ORDER BY mes DESC`,
+
+    // Noticias por categoría
+    `SELECT
+      c.nombre as categoria,
+      c.icono,
+      COUNT(n.id) as cantidad
+    FROM categorias c
+    LEFT JOIN noticias n ON c.id = n.categoria_id AND n.deleted_at IS NULL
+    GROUP BY c.id, c.nombre, c.icono
+    ORDER BY cantidad DESC`,
+
+    // Estado de publicación
+    `SELECT
+      CASE
+        WHEN publicada = 1 THEN 'publicadas'
+        WHEN publicada = 0 THEN 'borradores'
+        ELSE 'eliminadas'
+      END as estado,
+      COUNT(*) as cantidad
+    FROM noticias
+    WHERE deleted_at IS NULL
+    GROUP BY publicada`
+  ];
+
+  Promise.all(queries.map(query => {
+    return new Promise((resolve, reject) => {
+      db.query(query, (err, results) => {
+        if (err) reject(err);
+        else resolve(results);
+      });
+    });
+  }))
+  .then(([total, porMes, porCategoria, porEstado]) => {
+    res.json({
+      total: total[0].total,
+      por_mes: porMes,
+      por_categoria: porCategoria,
+      por_estado: porEstado
+    });
+  })
+  .catch(err => {
+    console.error('[DB Error] getStats:', err);
+    res.status(500).json({
+      error: 'Error al obtener estadísticas',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  });
+}
+
+/**
+ * Crea una nueva noticia
+ * ✅ Genera slug automáticamente, valida campos, devuelve noticia creada
+ */
+function create(req, res) {
+  if (!db) {
+    return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  }
+
+  const { titulo, descripcion, texto, categoria_id, fecha, imagen_url, destacada, publicada } = req.body;
+
+  if (!titulo || !texto || !categoria_id || !fecha) {
+    return res.status(400).json({ 
+      error: 'Faltan campos requeridos: titulo, texto, categoria_id, fecha' 
+    });
+  }
+
+  const sanitizedTitle = String(titulo).trim().substring(0, 255);
+  const baseSlug = generateSlug(sanitizedTitle).substring(0, 300);
+  const sanitizedData = {
+    titulo: sanitizedTitle,
+    slug: baseSlug,
+    descripcion: descripcion ? String(descripcion).trim().substring(0, 500) : null,
+    texto: String(texto).trim(),
+    categoria_id: parseInt(categoria_id, 10),
+    fecha: String(fecha),
+    imagen_url: imagen_url ? String(imagen_url).trim().substring(0, 500) : null,
+    destacada: destacada ? 1 : 0,
+    publicada: publicada !== false ? 1 : 0
+  };
+
+  if (isNaN(sanitizedData.categoria_id)) {
+    return res.status(400).json({ error: 'categoria_id debe ser un número entero' });
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sanitizedData.fecha)) {
+    return res.status(400).json({ error: 'fecha debe estar en formato YYYY-MM-DD' });
+  }
+
+  generateUniqueSlug(baseSlug, (slugErr, uniqueSlug) => {
+    if (slugErr) {
+      console.error('[DB Error] generateUniqueSlug:', slugErr);
+      return res.status(500).json({ error: 'Error al generar slug de la noticia' });
+    }
+
+    sanitizedData.slug = uniqueSlug;
+
+    db.query(
+      `INSERT INTO noticias (titulo, slug, descripcion, texto, categoria_id, fecha, imagen_url, destacada, publicada)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        sanitizedData.titulo,
+        sanitizedData.slug,
+        sanitizedData.descripcion,
+        sanitizedData.texto,
+        sanitizedData.categoria_id,
+        sanitizedData.fecha,
+        sanitizedData.imagen_url,
+        sanitizedData.destacada,
+        sanitizedData.publicada
+      ],
+      (err, result) => {
+        if (err) {
+          console.error('[DB Error] create:', err);
+          return res.status(500).json({ 
+            error: 'Error al crear noticia',
+            details: process.env.NODE_ENV === 'development' ? err.message : undefined
+          });
+        }
+
+      // Devolver la noticia creada con los datos completos
+      db.query(
+        `SELECT 
+          n.id,
+          n.titulo,
+          n.slug,
+          n.descripcion,
+          n.texto,
+          n.fecha,
+          n.imagen_url AS imagen,
+          n.destacada,
+          n.publicada,
+          n.created_at,
+          c.nombre AS categoria
+        FROM noticias n
+        LEFT JOIN categorias c ON n.categoria_id = c.id
+        WHERE n.id = ?
+        LIMIT 1`,
+        [result.insertId],
+        (err, rows) => {
+          if (err) {
+            return res.status(201).json({ 
+              ok: true,
+              id: result.insertId,
+              message: 'Noticia creada exitosamente'
+            });
+          }
+          res.status(201).json({ 
+            ok: true,
+            data: rows[0],
+            message: 'Noticia creada exitosamente'
+          });
+        }
+      );
+    }
+    );
+  });
+}
+
+/**
+ * Actualiza una noticia existente
+ */
+function update(req, res) {
+  if (!db) {
+    return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  }
+
+  const { id } = req.params;
+  const noticiaId = parseInt(id, 10);
+  if (isNaN(noticiaId)) {
+    return res.status(400).json({ error: 'ID de noticia inválido' });
+  }
+
+  // Validación mejorada
+  const validationErrors = validateNoticiaData(req.body, true);
+  if (validationErrors.length > 0) {
+    return res.status(400).json({
+      error: 'Datos inválidos',
+      details: validationErrors
+    });
+  }
+
+  const { titulo, descripcion, texto, categoria_id, fecha, imagen_url, destacada, publicada } = req.body;
+
+  // Construir query dinámico
+  const updates = [];
+  const params = [];
+
+  if (titulo !== undefined) {
+    updates.push('titulo = ?');
+    params.push(String(titulo).trim().substring(0, 255));
+    // Regenerar slug si cambió el título
+    updates.push('slug = ?');
+    params.push(generateSlug(titulo).substring(0, 300));
+  }
+
+  if (descripcion !== undefined) {
+    updates.push('descripcion = ?');
+    params.push(descripcion ? String(descripcion).trim().substring(0, 500) : null);
+  }
+
+  if (texto !== undefined) {
+    updates.push('texto = ?');
+    params.push(String(texto).trim());
+  }
+
+  if (categoria_id !== undefined) {
+    updates.push('categoria_id = ?');
+    params.push(parseInt(categoria_id, 10));
+  }
+
+  if (fecha !== undefined) {
+    updates.push('fecha = ?');
+    params.push(String(fecha));
+  }
+
+  if (imagen_url !== undefined) {
+    updates.push('imagen_url = ?');
+    params.push(imagen_url ? String(imagen_url).trim().substring(0, 500) : null);
+  }
+
+  if (destacada !== undefined) {
+    updates.push('destacada = ?');
+    params.push(destacada ? 1 : 0);
+  }
+
+  if (publicada !== undefined) {
+    updates.push('publicada = ?');
+    params.push(publicada ? 1 : 0);
+  }
+
+  if (updates.length === 0) {
+    return res.status(400).json({ error: 'No se proporcionaron campos para actualizar' });
+  }
+
+  updates.push('updated_at = CURRENT_TIMESTAMP');
+
+  const sql = `UPDATE noticias SET ${updates.join(', ')} WHERE id = ? AND deleted_at IS NULL`;
+
+  db.query(sql, [...params, noticiaId], (err, result) => {
+    if (err) {
+      console.error('[DB Error] update:', err);
+      return res.status(500).json({
+        error: 'Error al actualizar noticia',
+        details: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Noticia no encontrada o ya eliminada' });
+    }
+
+    // Devolver noticia actualizada
+    db.query(
+      `SELECT
+        n.id,
+        n.titulo,
+        n.slug,
+        n.descripcion,
+        n.texto,
+        n.fecha,
+        n.imagen_url AS imagen,
+        n.destacada,
+        n.publicada,
+        n.created_at,
+        n.updated_at,
+        c.nombre AS categoria,
+        c.icono AS categoria_icono
+      FROM noticias n
+      LEFT JOIN categorias c ON n.categoria_id = c.id
+      WHERE n.id = ? AND n.deleted_at IS NULL
+      LIMIT 1`,
+      [noticiaId],
+      (err, rows) => {
+        if (err) {
+          return res.status(200).json({ ok: true, message: 'Noticia actualizada exitosamente' });
+        }
+        res.json({
+          ok: true,
+          data: rows[0],
+          message: 'Noticia actualizada exitosamente'
+        });
+      }
+    );
+  });
+}
+
+/**
+ * Soft delete de una noticia
+ */
+function remove(req, res) {
+  if (!db) {
+    return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  }
+
+  const { id } = req.params;
+  const noticiaId = parseInt(id, 10);
+  if (isNaN(noticiaId)) {
+    return res.status(400).json({ error: 'ID de noticia inválido' });
+  }
+
+  db.query(
+    'UPDATE noticias SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL',
+    [noticiaId],
+    (err, result) => {
+      if (err) {
+        console.error('[DB Error] remove:', err);
+        return res.status(500).json({
+          error: 'Error al eliminar noticia',
+          details: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
+      }
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ error: 'Noticia no encontrada o ya eliminada' });
+      }
+
+      res.json({
+        ok: true,
+        message: 'Noticia eliminada exitosamente'
       });
     }
   );
 }
 
-function create(req, res) {
-  if (!db) return res.status(500).json({ error: 'BD no disponible' });
-  const { nivel, grado, mes, titulo, descripcion, inspector_nombre, imagenes } = req.body;
-
-  if (!isValidNivel(nivel)) return res.status(400).json({ error: 'nivel inválido' });
-  if (!grado || !mes || !titulo) return res.status(400).json({ error: 'grado, mes y título son requeridos' });
-  if (!isValidMes(mes)) return res.status(400).json({ error: 'mes inválido (YYYY-MM)' });
-
-  const imgs = Array.isArray(imagenes) ? imagenes.map(u => String(u).trim()).filter(u => u).slice(0, 30) : [];
-
-  db.query(
-    'INSERT INTO actividades_inspectores (nivel,grado,mes,titulo,descripcion,inspector_nombre) VALUES (?,?,?,?,?,?)',
-    [String(nivel).toLowerCase().trim(), String(grado).trim().substring(0,150),
-     normalizeMes(mes), String(titulo).trim().substring(0,255),
-     descripcion ? String(descripcion).trim() : null,
-     inspector_nombre ? String(inspector_nombre).trim().substring(0,150) : null],
-    (err, result) => {
-      if (err) { console.error('[actividades.create]', err); return res.status(500).json({ error: 'Error al crear' }); }
-      const actId = result.insertId;
-      if (imgs.length === 0) return res.status(201).json({ ok: true, id: actId });
-
-      db.query(
-        'INSERT INTO actividades_imagenes (actividad_id, imagen_url, orden) VALUES ?',
-        [imgs.map((u, i) => [actId, u.substring(0,500), i])],
-        imgErr => {
-          if (imgErr) console.error('[actividades.create.imgs]', imgErr);
-          res.status(201).json({ ok: true, id: actId, warning: !!imgErr });
-        }
-      );
-    }
-  );
-}
-
-function update(req, res) {
-  if (!db) return res.status(500).json({ error: 'BD no disponible' });
-  const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) return res.status(400).json({ error: 'ID inválido' });
-
-  const { nivel, grado, mes, titulo, descripcion, inspector_nombre, imagenes } = req.body;
-  const sets = [], params = [];
-
-  if (nivel !== undefined) {
-    if (!isValidNivel(nivel)) return res.status(400).json({ error: 'nivel inválido' });
-    sets.push('nivel=?'); params.push(String(nivel).toLowerCase().trim());
-  }
-  if (grado !== undefined)            { sets.push('grado=?'); params.push(String(grado).trim().substring(0,150)); }
-  if (mes !== undefined) {
-    if (!isValidMes(mes)) return res.status(400).json({ error: 'mes inválido' });
-    sets.push('mes=?'); params.push(normalizeMes(mes));
-  }
-  if (titulo !== undefined)           { sets.push('titulo=?'); params.push(String(titulo).trim().substring(0,255)); }
-  if (descripcion !== undefined)      { sets.push('descripcion=?'); params.push(descripcion ? String(descripcion).trim() : null); }
-  if (inspector_nombre !== undefined) { sets.push('inspector_nombre=?'); params.push(inspector_nombre ? String(inspector_nombre).trim().substring(0,150) : null); }
-
-  const updateImgs = (cb) => {
-    if (imagenes === undefined) return cb(null);
-    const imgs = Array.isArray(imagenes) ? imagenes.map(u => String(u).trim()).filter(u => u).slice(0,30) : [];
-    db.query('DELETE FROM actividades_imagenes WHERE actividad_id=?', [id], delErr => {
-      if (delErr) return cb(delErr);
-      if (imgs.length === 0) return cb(null);
-      db.query('INSERT INTO actividades_imagenes (actividad_id,imagen_url,orden) VALUES ?',
-        [imgs.map((u,i) => [id, u.substring(0,500), i])], cb);
-    });
-  };
-
-  const doUpdate = (cb) => {
-    if (sets.length === 0) return cb(null, { affectedRows: 1 });
-    sets.push('updated_at=CURRENT_TIMESTAMP');
-    db.query(`UPDATE actividades_inspectores SET ${sets.join(',')} WHERE id=? AND deleted_at IS NULL`,
-      [...params, id], cb);
-  };
-
-  doUpdate((err, result) => {
-    if (err) { console.error('[actividades.update]', err); return res.status(500).json({ error: 'Error al actualizar' }); }
-    if (!result || result.affectedRows === 0) return res.status(404).json({ error: 'No encontrada' });
-    updateImgs(imgErr => {
-      if (imgErr) console.error('[actividades.update.imgs]', imgErr);
-      res.json({ ok: true, warning: !!imgErr });
-    });
-  });
-}
-
-function remove(req, res) {
-  if (!db) return res.status(500).json({ error: 'BD no disponible' });
-  const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) return res.status(400).json({ error: 'ID inválido' });
-
-  db.query(
-    'UPDATE actividades_inspectores SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND deleted_at IS NULL',
-    [id],
-    (err, result) => {
-      if (err) return res.status(500).json({ error: 'Error al eliminar' });
-      if (result.affectedRows === 0) return res.status(404).json({ error: 'No encontrada' });
-      res.json({ ok: true });
-    }
-  );
-}
-
-// ── Router (integrado para no necesitar actividadesRoutes.js) ─────────────────
-const router = express.Router();
-router.get('/',            getAll);
-router.get('/admin/list',  requireAuth, getAllAdmin);
-router.get('/:id',         getById);
-router.post('/',           requireAuth, create);
-router.put('/:id',         requireAuth, update);
-router.delete('/:id',      requireAuth, remove);
-
-module.exports = router;
-module.exports.setDatabase     = setDatabase;
-module.exports.NIVELES_VALIDOS = NIVELES_VALIDOS;
+module.exports = {
+  setDatabase,
+  requireAuth,
+  timingSafeEqual,
+  getAll,
+  getAllAdmin,
+  getById,
+  getByIdAdmin,
+  getBySlug,
+  getStats,
+  create,
+  update,
+  remove
+};

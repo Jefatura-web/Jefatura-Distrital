@@ -1,67 +1,59 @@
 /**
- * Módulo de Actividades de Inspectores (página nivel.html)
- * Mismo patrón que news.js/calendar.js: fetch + normalize + render, usando utils.js.
+ * Actividades de Inspectores (nivel.html)
+ * Mejoras: resumen anual por mes, filtro de búsqueda, cards con overlay,
+ *          carrusel con dots + swipe + teclado.
  */
 
 import { apiFetch, getElement, sanitize, handleError } from './utils.js';
 
 export const NIVELES = {
-  'inicial':       { nombre: 'Nivel Inicial',        icono: '🧸' },
-  'primaria':      { nombre: 'Nivel Primario',       icono: '📘' },
-  'secundaria':    { nombre: 'Nivel Secundario',     icono: '🎓' },
-  'tecnica':       { nombre: 'Educación Técnica',    icono: '⚙️' },
-  'agraria':       { nombre: 'Educación Agraria',    icono: '🌾' },
-  'superior':      { nombre: 'Nivel Superior',       icono: '🏛️' },
-  'especial':      { nombre: 'Educación Especial',   icono: '♿' },
-  'pcyps':         { nombre: 'PCYPS',                icono: '📋' },
-  'dejayam':       { nombre: 'DEJAYAM',               icono: '🏃' },
-  'ed-fisica':     { nombre: 'Educación Física',     icono: '⚽' },
-  'ed-artistica':  { nombre: 'Educación Artística',  icono: '🎨' }
+  'inicial':      { nombre: 'Nivel Inicial',       icono: '🧸' },
+  'primaria':     { nombre: 'Nivel Primario',       icono: '📘' },
+  'secundaria':   { nombre: 'Nivel Secundario',     icono: '🎓' },
+  'tecnica':      { nombre: 'Educación Técnica',    icono: '⚙️' },
+  'agraria':      { nombre: 'Educación Agraria',    icono: '🌾' },
+  'superior':     { nombre: 'Nivel Superior',       icono: '🏛️' },
+  'especial':     { nombre: 'Educación Especial',   icono: '♿' },
+  'pcyps':        { nombre: 'PCYPS',                icono: '📋' },
+  'dejayam':      { nombre: 'DEJAYAM',              icono: '🏃' },
+  'ed-fisica':    { nombre: 'Educación Física',     icono: '⚽' },
+  'ed-artistica': { nombre: 'Educación Artística',  icono: '🎨' }
 };
 
-const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MESES_FULL  = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                     'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const MESES_CORTO = ['Ene','Feb','Mar','Abr','May','Jun',
+                     'Jul','Ago','Sep','Oct','Nov','Dic'];
 
 const state = {
-  nivel: null,
-  actividades: [],   // todas las actividades del nivel, ya traídas del server
-  mesActivo: null    // 'YYYY-MM'
+  nivel:        null,
+  actividades:  [],
+  mesActivo:    null,
+  filtroActivo: ''
 };
 
-function getNivelFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  return String(params.get('nivel') || '').toLowerCase().trim();
-}
+// ── Helpers de fecha ──────────────────────────────────────────────────────────
+const mesKey   = f  => String(f || '').substring(0, 7);
+const mesLabel = k  => { const [a,m] = k.split('-').map(Number); return (a && m) ? `${MESES_FULL[m-1]} ${a}` : k; };
+const mesCorto = k  => { const m = parseInt(k.split('-')[1], 10); return MESES_CORTO[m-1] || k; };
 
-function mesKey(fechaStr) {
-  // fechaStr viene como 'YYYY-MM-DD' o Date serializado por mysql2; nos quedamos con YYYY-MM
-  return String(fechaStr || '').substring(0, 7);
-}
-
-function mesLabel(key) {
-  const [anio, mesNum] = key.split('-').map(Number);
-  if (!anio || !mesNum) return key;
-  return `${MESES[mesNum - 1]} ${anio}`;
-}
-
+// ── Init ──────────────────────────────────────────────────────────────────────
 export async function initNivelPage() {
-  const nivel = getNivelFromUrl();
-  const info = NIVELES[nivel];
-
+  const nivel = new URLSearchParams(window.location.search).get('nivel')?.toLowerCase().trim() || '';
+  const info  = NIVELES[nivel];
   const titulo = getElement('#nivel-titulo');
-  const icono = getElement('#nivel-icono');
+  const icono  = getElement('#nivel-icono');
 
   if (!info) {
     if (titulo) titulo.textContent = 'Nivel no encontrado';
-    const contenedor = getElement('#nivel-contenido');
-    if (contenedor) {
-      contenedor.innerHTML = '<div class="sin-actividades">El nivel solicitado no existe. Volvé al inicio e ingresá desde el menú "Sede de Inspectores".</div>';
-    }
+    const c = getElement('#nivel-contenido');
+    if (c) c.innerHTML = '<div class="sin-actividades">El nivel solicitado no existe. Volvé al inicio.</div>';
     return;
   }
 
   state.nivel = nivel;
   if (titulo) titulo.textContent = info.nombre;
-  if (icono) icono.textContent = info.icono;
+  if (icono)  icono.textContent  = info.icono;
   document.title = `${info.nombre} | Jefatura Distrital Quilmes`;
 
   await cargarActividades();
@@ -69,128 +61,208 @@ export async function initNivelPage() {
 
 async function cargarActividades() {
   const contenedor = getElement('#nivel-contenido');
-  const tabsMes = getElement('#nivel-meses');
+  const resumen    = getElement('#nivel-resumen');
+  const tabs       = getElement('#nivel-meses');
+
   if (contenedor) contenedor.innerHTML = '<div class="nivel-loading">Cargando actividades…</div>';
+  if (resumen)    resumen.innerHTML    = '';
+  if (tabs)       tabs.innerHTML       = '';
 
   try {
-    const actividades = await apiFetch(`/actividades?nivel=${encodeURIComponent(state.nivel)}`);
-    state.actividades = Array.isArray(actividades) ? actividades : [];
+    const data = await apiFetch(`/actividades?nivel=${encodeURIComponent(state.nivel)}`);
+    state.actividades = Array.isArray(data) ? data : [];
 
     if (state.actividades.length === 0) {
-      if (tabsMes) tabsMes.innerHTML = '';
-      if (contenedor) {
-        contenedor.innerHTML = '<div class="sin-actividades">Todavía no hay actividades cargadas para este nivel.</div>';
-      }
+      if (contenedor) contenedor.innerHTML = '<div class="sin-actividades">Todavía no hay actividades cargadas para este nivel.</div>';
       return;
     }
 
     const meses = [...new Set(state.actividades.map(a => mesKey(a.mes)))].sort().reverse();
     state.mesActivo = meses[0];
 
+    renderResumenAnual();
     renderTabsMes(meses);
+    initFiltro();
     renderGrillaGrados();
-  } catch (error) {
-    handleError(error, 'cargarActividades');
-    if (contenedor) {
-      contenedor.innerHTML = '<div class="nivel-error">No se pudieron cargar las actividades. Intentá nuevamente más tarde.</div>';
-    }
+  } catch (err) {
+    handleError(err, 'cargarActividades');
+    if (contenedor) contenedor.innerHTML = '<div class="nivel-error">No se pudieron cargar las actividades. Intentá más tarde.</div>';
   }
 }
 
-function renderTabsMes(meses) {
-  const tabsMes = getElement('#nivel-meses');
-  if (!tabsMes) return;
+// ── Resumen anual ─────────────────────────────────────────────────────────────
+function renderResumenAnual() {
+  const resumen = getElement('#nivel-resumen');
+  if (!resumen || state.actividades.length === 0) return;
 
-  tabsMes.innerHTML = meses.map(key => `
-    <button type="button" class="nivel-mes-tab${key === state.mesActivo ? ' activo' : ''}" data-mes="${sanitize(key)}">
-      ${sanitize(mesLabel(key))}
-    </button>
-  `).join('');
+  const porMes = {};
+  state.actividades.forEach(a => { const k = mesKey(a.mes); porMes[k] = (porMes[k] || 0) + 1; });
 
-  tabsMes.querySelectorAll('.nivel-mes-tab').forEach(btn => {
+  const meses    = [...new Set(state.actividades.map(a => mesKey(a.mes)))].sort();
+  const maxCount = Math.max(...Object.values(porMes), 1);
+
+  resumen.innerHTML = `
+    <div class="resumen-anual">
+      <span class="resumen-titulo">Resumen del año — clic para navegar al mes</span>
+      <div class="resumen-barras">
+        ${meses.map(key => {
+          const count  = porMes[key] || 0;
+          const pct    = Math.max(Math.round((count / maxCount) * 100), 8);
+          const activo = key === state.mesActivo;
+          return `
+            <button type="button" class="resumen-mes${activo ? ' activo' : ''}" data-mes="${key}"
+                    title="${mesLabel(key)}: ${count} actividad${count !== 1 ? 'es' : ''}">
+              <span class="resumen-bar" style="--pct:${pct}%"></span>
+              <span class="resumen-count">${count}</span>
+              <span class="resumen-label">${mesCorto(key)}</span>
+            </button>`;
+        }).join('')}
+      </div>
+    </div>`;
+
+  resumen.querySelectorAll('.resumen-mes').forEach(btn => {
     btn.addEventListener('click', () => {
       state.mesActivo = btn.dataset.mes;
-      tabsMes.querySelectorAll('.nivel-mes-tab').forEach(b => b.classList.remove('activo'));
-      btn.classList.add('activo');
+      const mesesActuales = [...new Set(state.actividades.map(a => mesKey(a.mes)))].sort().reverse();
+      renderResumenAnual();
+      renderTabsMes(mesesActuales);
       renderGrillaGrados();
     });
   });
 }
 
+// ── Pestañas de mes ───────────────────────────────────────────────────────────
+function renderTabsMes(meses) {
+  const tabs = getElement('#nivel-meses');
+  if (!tabs) return;
+
+  tabs.innerHTML = meses.map(key => `
+    <button type="button" class="nivel-mes-tab${key === state.mesActivo ? ' activo' : ''}" data-mes="${sanitize(key)}">
+      ${sanitize(mesLabel(key))}
+    </button>`).join('');
+
+  tabs.querySelectorAll('.nivel-mes-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.mesActivo = btn.dataset.mes;
+      tabs.querySelectorAll('.nivel-mes-tab').forEach(b => b.classList.remove('activo'));
+      btn.classList.add('activo');
+      renderResumenAnual();
+      renderGrillaGrados();
+    });
+  });
+}
+
+// ── Filtro de búsqueda ────────────────────────────────────────────────────────
+function initFiltro() {
+  const input = getElement('#nivel-filtro');
+  if (!input) return;
+  input.value = '';
+  state.filtroActivo = '';
+  input.addEventListener('input', () => {
+    state.filtroActivo = input.value.trim().toLowerCase();
+    renderGrillaGrados();
+  });
+}
+
+// ── Grilla de grados ──────────────────────────────────────────────────────────
 function renderGrillaGrados() {
   const contenedor = getElement('#nivel-contenido');
   if (!contenedor) return;
 
-  const delMes = state.actividades.filter(a => mesKey(a.mes) === state.mesActivo);
+  let delMes = state.actividades.filter(a => mesKey(a.mes) === state.mesActivo);
+
+  if (state.filtroActivo) {
+    const q = state.filtroActivo;
+    delMes = delMes.filter(a =>
+      (a.grado            || '').toLowerCase().includes(q) ||
+      (a.inspector_nombre || '').toLowerCase().includes(q) ||
+      (a.titulo           || '').toLowerCase().includes(q)
+    );
+  }
 
   if (delMes.length === 0) {
-    contenedor.innerHTML = '<div class="sin-actividades">No hay actividades cargadas para este mes.</div>';
+    const msg = state.filtroActivo
+      ? `No hay resultados para "<strong>${sanitize(state.filtroActivo)}</strong>" en este mes.`
+      : 'No hay actividades cargadas para este mes.';
+    contenedor.innerHTML = `<div class="sin-actividades">${msg}</div>`;
     return;
   }
 
   contenedor.innerHTML = `<div class="nivel-grid-grados">${delMes.map(cardGrado).join('')}</div>`;
 
   contenedor.querySelectorAll('.grado-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const actividad = delMes.find(a => String(a.id) === card.dataset.id);
-      if (actividad) mostrarDetalle(actividad);
-    });
+    const actividad = delMes.find(a => String(a.id) === card.dataset.id);
+    if (!actividad) return;
+    const open = () => mostrarDetalle(actividad);
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
   });
 }
 
 function cardGrado(actividad) {
-  const primeraImagen = (actividad.imagenes && actividad.imagenes[0]) || '';
-  const imgHtml = primeraImagen
-    ? `<img src="${sanitize(primeraImagen)}" alt="Foto de ${sanitize(actividad.grado)}" loading="lazy" onerror="this.onerror=null;this.src='logo_jefatura.jpg'">`
-    : '<div class="grado-imagen-placeholder">🖼️</div>';
+  const primeraImg = (actividad.imagenes && actividad.imagenes[0]) || '';
+  const cantFotos  = (actividad.imagenes || []).length;
 
-  const cantidadFotos = (actividad.imagenes || []).length;
+  const imgHtml = primeraImg
+    ? `<img src="${sanitize(primeraImg)}" alt="${sanitize(actividad.grado)}" loading="lazy"
+            onerror="this.onerror=null;this.style.display='none'">`
+    : '<div class="grado-sin-img">🖼️</div>';
 
   return `
-    <article class="grado-card" data-id="${sanitize(String(actividad.id))}" tabindex="0" role="button" aria-label="Ver detalle de ${sanitize(actividad.grado)}">
-      <div class="grado-imagen">${imgHtml}${cantidadFotos > 1 ? `<span class="grado-badge-fotos">📷 ${cantidadFotos}</span>` : ''}</div>
+    <article class="grado-card" data-id="${sanitize(String(actividad.id))}"
+             tabindex="0" role="button" aria-label="Ver: ${sanitize(actividad.titulo)}">
+      <div class="grado-imagen">
+        ${imgHtml}
+        <div class="grado-overlay">
+          <span class="grado-overlay-grado">${sanitize(actividad.grado)}</span>
+        </div>
+        ${cantFotos > 1 ? `<span class="grado-badge-fotos">📷 ${cantFotos}</span>` : ''}
+      </div>
       <div class="grado-body">
-        <div class="grado-nombre">${sanitize(actividad.grado)}</div>
         <h4>${sanitize(actividad.titulo)}</h4>
-        ${actividad.inspector_nombre ? `<p class="grado-inspector">👤 ${sanitize(actividad.inspector_nombre)}</p>` : ''}
+        ${actividad.inspector_nombre
+          ? `<p class="grado-inspector">👤 ${sanitize(actividad.inspector_nombre)}</p>`
+          : ''}
       </div>
     </article>`;
 }
 
+// ── Modal con carrusel ────────────────────────────────────────────────────────
 function mostrarDetalle(actividad) {
   const modal = getElement('#nivel-detalle-modal');
-  const body = getElement('#nivel-detalle-body');
+  const body  = getElement('#nivel-detalle-body');
   if (!modal || !body) return;
 
   const imagenes = actividad.imagenes || [];
-  const total = imagenes.length;
+  const total    = imagenes.length;
 
-  const slidesHtml = imagenes.map((url, i) => `
+  const slides = imagenes.map((url, i) => `
     <div class="foto-slide">
-      <img src="${sanitize(url)}"
-           alt="Foto ${i + 1} de ${total}"
+      <img src="${sanitize(url)}" alt="Foto ${i+1} de ${total}"
            loading="${i === 0 ? 'eager' : 'lazy'}"
            onerror="this.onerror=null;this.style.opacity='0'">
     </div>`).join('');
 
-  const navHtml = total > 1 ? `
-    <button class="foto-nav foto-prev" type="button" aria-label="Foto anterior">‹</button>
-    <button class="foto-nav foto-next" type="button" aria-label="Foto siguiente">›</button>
-    <div class="foto-counter"><span class="foto-actual">1</span>&nbsp;/&nbsp;${total}</div>` : '';
+  const nav = total > 1 ? `
+    <button class="foto-nav foto-prev" type="button" aria-label="Anterior">‹</button>
+    <button class="foto-nav foto-next" type="button" aria-label="Siguiente">›</button>
+    <div class="foto-dots">
+      ${imagenes.map((_,i) => `<span class="foto-dot${i===0?' activo':''}" data-idx="${i}"></span>`).join('')}
+    </div>
+    <div class="foto-counter"><span class="foto-actual">1</span> / ${total}</div>` : '';
 
   body.innerHTML = `
     <h3>${sanitize(actividad.titulo)}</h3>
     <p class="nivel-detalle-meta">
       ${sanitize(actividad.grado)} · ${sanitize(mesLabel(mesKey(actividad.mes)))}
-      ${actividad.inspector_nombre ? ` · ${sanitize(actividad.inspector_nombre)}` : ''}
+      ${actividad.inspector_nombre ? ` · 👤 ${sanitize(actividad.inspector_nombre)}` : ''}
     </p>
     ${actividad.descripcion ? `<p class="nivel-detalle-texto">${sanitize(actividad.descripcion)}</p>` : ''}
     ${total > 0 ? `
       <div class="foto-carousel" id="foto-carousel">
-        <div class="foto-track" id="foto-track">${slidesHtml}</div>
-        ${navHtml}
-      </div>` : ''}
-  `;
+        <div class="foto-track" id="foto-track">${slides}</div>
+        ${nav}
+      </div>` : ''}`;
 
   if (total > 1) initCarousel(total);
 
@@ -198,38 +270,42 @@ function mostrarDetalle(actividad) {
   modal.setAttribute('aria-hidden', 'false');
 }
 
-let _carouselKeyHandler = null;
+let _keyHandler = null;
 
 function initCarousel(total) {
   const track = getElement('#foto-track');
   if (!track) return;
   let current = 0;
+  const dots  = document.querySelectorAll('.foto-dot');
 
-  const goTo = (idx) => {
+  const goTo = idx => {
     current = ((idx % total) + total) % total;
     track.style.transform = `translateX(-${current * 100}%)`;
     const counter = getElement('.foto-actual');
     if (counter) counter.textContent = current + 1;
+    dots.forEach((d, i) => d.classList.toggle('activo', i === current));
   };
 
   getElement('.foto-prev')?.addEventListener('click', () => goTo(current - 1));
   getElement('.foto-next')?.addEventListener('click', () => goTo(current + 1));
+  dots.forEach(dot => dot.addEventListener('click', () => goTo(parseInt(dot.dataset.idx, 10))));
 
   // Swipe táctil
   let startX = 0;
-  track.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; }, { passive: true });
-  track.addEventListener('touchend', (e) => {
+  track.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
+  track.addEventListener('touchend',   e => {
     const diff = startX - e.changedTouches[0].clientX;
     if (Math.abs(diff) > 40) goTo(diff > 0 ? current + 1 : current - 1);
   });
 
-  // Teclado (flechas)
-  if (_carouselKeyHandler) document.removeEventListener('keydown', _carouselKeyHandler);
-  _carouselKeyHandler = (e) => {
+  // Teclado
+  if (_keyHandler) document.removeEventListener('keydown', _keyHandler);
+  _keyHandler = e => {
     if (e.key === 'ArrowRight') goTo(current + 1);
     if (e.key === 'ArrowLeft')  goTo(current - 1);
+    if (e.key === 'Escape')     cerrarDetalle();
   };
-  document.addEventListener('keydown', _carouselKeyHandler);
+  document.addEventListener('keydown', _keyHandler);
 }
 
 function cerrarDetalle() {
@@ -237,16 +313,13 @@ function cerrarDetalle() {
   if (!modal) return;
   modal.classList.remove('visible');
   modal.setAttribute('aria-hidden', 'true');
-  if (_carouselKeyHandler) {
-    document.removeEventListener('keydown', _carouselKeyHandler);
-    _carouselKeyHandler = null;
-  }
+  if (_keyHandler) { document.removeEventListener('keydown', _keyHandler); _keyHandler = null; }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   initNivelPage();
   getElement('#nivel-detalle-cerrar')?.addEventListener('click', cerrarDetalle);
-  getElement('#nivel-detalle-modal')?.addEventListener('click', (e) => {
+  getElement('#nivel-detalle-modal')?.addEventListener('click', e => {
     if (e.target.id === 'nivel-detalle-modal') cerrarDetalle();
   });
 });

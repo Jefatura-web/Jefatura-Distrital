@@ -2789,23 +2789,183 @@
   .nivel-header h1 { font-size: 20px; }
   .nivel-grid-grados { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
 }
-/* ── CARRUSEL DE FOTOS (detalle de actividad en nivel.html) ── */
+/* ════════════════════════════════════════════════════════
+ * MEJORAS PÁGINA DE NIVEL — carrusel, resumen, filtro, overlay
+ * ════════════════════════════════════════════════════════ */
+
+/* ── Resumen anual ──────────────────────────────────────── */
+.resumen-anual {
+  background: white;
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 3px 12px rgba(13,33,84,0.07);
+}
+.resumen-titulo {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--celeste, #4a90c4);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 12px;
+}
+.resumen-barras {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 72px;
+}
+.resumen-mes {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 6px;
+  transition: transform 0.15s;
+}
+.resumen-mes:hover { transform: translateY(-2px); }
+.resumen-mes.activo .resumen-bar { background: var(--azul-marino, #0d2154); }
+.resumen-mes.activo .resumen-label { color: var(--azul-marino, #0d2154); font-weight: 700; }
+
+.resumen-bar {
+  width: 100%;
+  min-height: 8px;
+  height: var(--pct, 20%);
+  max-height: 48px;
+  background: var(--celeste-claro, #7ab8de);
+  border-radius: 4px 4px 0 0;
+  transition: background 0.2s, height 0.3s;
+}
+.resumen-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--gris-texto, #444b5e);
+}
+.resumen-label {
+  font-size: 10px;
+  color: rgba(68,75,94,0.7);
+}
+
+/* ── Buscador ───────────────────────────────────────────── */
+.nivel-filtro-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: white;
+  border: 2px solid var(--borde, #dde3ef);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 18px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.nivel-filtro-wrap:focus-within {
+  border-color: var(--celeste, #4a90c4);
+  box-shadow: 0 0 0 3px rgba(74,144,196,0.1);
+}
+.nivel-filtro-icon { font-size: 16px; flex-shrink: 0; }
+#nivel-filtro {
+  border: none;
+  outline: none;
+  flex: 1;
+  font-family: 'Source Sans 3', sans-serif;
+  font-size: 14px;
+  color: var(--gris-texto, #444b5e);
+  background: transparent;
+}
+#nivel-filtro::placeholder { color: rgba(68,75,94,0.45); }
+
+/* ── Tarjeta de grado mejorada ──────────────────────────── */
+.grado-imagen {
+  position: relative;
+  width: 100%;
+  height: 160px;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--azul-marino, #0d2154), var(--celeste, #4a90c4));
+}
+.grado-imagen img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.35s ease;
+}
+.grado-card:hover .grado-imagen img { transform: scale(1.05); }
+.grado-sin-img {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  opacity: 0.4;
+}
+
+/* Overlay con nombre del grado */
+.grado-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(13,33,84,0.75) 0%, transparent 55%);
+  display: flex;
+  align-items: flex-end;
+  padding: 10px 12px;
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.grado-card:hover .grado-overlay,
+.grado-card:focus-visible .grado-overlay { opacity: 1; }
+.grado-overlay-grado {
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.grado-badge-fotos {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(13,33,84,0.72);
+  color: white;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  backdrop-filter: blur(4px);
+}
+.grado-body {
+  padding: 12px 14px 14px;
+}
+.grado-body h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--azul-marino, #0d2154);
+  margin: 0 0 5px;
+  line-height: 1.3;
+}
+.grado-inspector {
+  font-size: 12px;
+  color: var(--gris-texto, #444b5e);
+  margin: 0;
+}
+
+/* ── Carrusel de fotos (modal) ──────────────────────────── */
 .foto-carousel {
   position: relative;
   overflow: hidden;
   border-radius: 12px;
   background: #000;
   margin-top: 16px;
-  aspect-ratio: 4/3;
+  aspect-ratio: 4 / 3;
 }
-
 .foto-track {
   display: flex;
   height: 100%;
-  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
   will-change: transform;
 }
-
 .foto-slide {
   min-width: 100%;
   height: 100%;
@@ -2813,7 +2973,6 @@
   align-items: center;
   justify-content: center;
 }
-
 .foto-slide img {
   max-width: 100%;
   max-height: 100%;
@@ -2821,19 +2980,16 @@
   user-select: none;
   -webkit-user-drag: none;
 }
-
 .foto-nav {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 40px;
-  height: 40px;
+  width: 40px; height: 40px;
   border-radius: 50%;
   border: none;
-  background: rgba(13, 33, 84, 0.65);
+  background: rgba(13,33,84,0.65);
   color: #fff;
   font-size: 22px;
-  line-height: 1;
   cursor: pointer;
   z-index: 10;
   display: flex;
@@ -2842,16 +2998,35 @@
   transition: background 0.2s;
   backdrop-filter: blur(4px);
 }
-.foto-nav:hover { background: rgba(13, 33, 84, 0.9); }
+.foto-nav:hover { background: rgba(13,33,84,0.9); }
 .foto-prev { left: 10px; }
 .foto-next { right: 10px; }
 
+.foto-dots {
+  position: absolute;
+  bottom: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+}
+.foto-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.45);
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+}
+.foto-dot.activo {
+  background: white;
+  transform: scale(1.3);
+}
 .foto-counter {
   position: absolute;
   bottom: 10px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0,0,0,0.5);
   color: #fff;
   font-size: 12px;
   font-weight: 600;
@@ -2863,4 +3038,6 @@
 
 @media (max-width: 500px) {
   .foto-nav { width: 32px; height: 32px; font-size: 18px; }
+  .resumen-barras { gap: 3px; }
+  .resumen-label, .resumen-count { font-size: 9px; }
 }

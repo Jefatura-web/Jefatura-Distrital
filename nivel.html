@@ -19,18 +19,32 @@
 
     <div class="nivel-header">
       <span class="nivel-icono" id="nivel-icono" aria-hidden="true">📚</span>
-      <h1 id="nivel-titulo">Cargando nivel…</h1>
+      <h1 id="nivel-titulo">Cargando…</h1>
     </div>
 
+    <!-- Resumen visual del año (barras por mes, clickeables) -->
+    <div id="nivel-resumen"></div>
+
+    <!-- Buscador por grado, inspector o título -->
+    <div class="nivel-filtro-wrap">
+      <span class="nivel-filtro-icon">🔍</span>
+      <input type="search" id="nivel-filtro"
+             placeholder="Buscar por grado, inspector o título…"
+             autocomplete="off" aria-label="Filtrar actividades" />
+    </div>
+
+    <!-- Pestañas de mes -->
     <div class="nivel-meses" id="nivel-meses" role="tablist" aria-label="Seleccionar mes"></div>
 
+    <!-- Grilla de actividades -->
     <div id="nivel-contenido" aria-live="polite">
       <div class="nivel-loading">Cargando actividades…</div>
     </div>
   </div>
 
+  <!-- Modal de detalle con carrusel -->
   <div id="nivel-detalle-modal" aria-hidden="true">
-    <div class="nivel-detalle-content" role="dialog" aria-modal="true">
+    <div class="nivel-detalle-content" role="dialog" aria-modal="true" aria-labelledby="detalle-titulo">
       <button id="nivel-detalle-cerrar" class="nivel-detalle-cerrar" type="button" aria-label="Cerrar">×</button>
       <div id="nivel-detalle-body"></div>
     </div>

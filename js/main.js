@@ -2,9 +2,9 @@
  * Punto de entrada del cliente
  */
 
-import { cargarNoticias, initSearch, showAppAlert } from './news.js';
+import { cargarNoticias, initSearch, showAppAlert, cerrarNoticiaModal } from './news.js';
 import { initCalendar } from './calendar.js';
-import { getElement, getApiBaseUrl } from './utils.js';  // ← ya no necesita apiConfig.js
+import { getElement, getApiBaseUrl } from './utils.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('🚀 Aplicación iniciada');
@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNavToggle();
   initSearch();
   initAdminAccessButton();
+  initNoticiaModal();
 
   try {
     const noticias = await cargarNoticias();
@@ -22,6 +23,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     showAppAlert('No se pudieron cargar las noticias. Verificá la conexión o recargá la página.');
   }
 });
+
+// ── Modal de noticias ─────────────────────────────────────────────────────────
+function initNoticiaModal() {
+  getElement('#noticia-modal-cerrar')?.addEventListener('click', cerrarNoticiaModal);
+  getElement('#modal-noticia')?.addEventListener('click', e => {
+    if (e.target.id === 'modal-noticia') cerrarNoticiaModal();
+  });
+}
 
 // ── Nav toggle ────────────────────────────────────────────────────────────────
 function initNavToggle() {

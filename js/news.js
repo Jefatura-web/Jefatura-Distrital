@@ -175,22 +175,34 @@ function renderNoticiasList(noticias = getAvailableNoticias().slice(0, 8)) {
 
   grid.innerHTML = '';
   noticias.forEach((noticia, i) => {
-    const card = document.createElement('a');
-    card.href = '#';
+    const card = document.createElement('article');
     card.className = 'card-noticia';
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
     card.setAttribute('aria-label', `Leer: ${sanitize(noticia.titulo)}`);
-    const color = COLORES[i % COLORES.length];
+
+    const color   = COLORES[i % COLORES.length];
+    const imgSrc  = noticia.imagen || noticia.imagen_url || '';
+    const imgHtml = imgSrc
+      ? `<img src="${sanitize(imgSrc)}" alt="${sanitize(noticia.titulo)}" loading="lazy"
+              onerror="this.onerror=null;this.parentNode.classList.add('cn-imagen-fallback');this.remove()">`
+      : '';
+
     card.innerHTML = `
-      <div class="cn-imagen ${color}" aria-hidden="true">📰</div>
+      <div class="cn-imagen ${color}">${imgHtml}<span class="cn-emoji" aria-hidden="true">📰</span></div>
       <div class="cn-body">
         <div class="cn-categoria">${sanitize(noticia.categoria || 'General')}</div>
         <h4>${sanitize(noticia.titulo)}</h4>
         <p>${sanitize((noticia.texto || '').substring(0, 110))}…</p>
         <div class="cn-footer">
           <time datetime="${sanitize(noticia.fecha)}">📅 ${sanitize(noticia.fecha)}</time>
-          <span aria-hidden="true">Leer →</span>
+          <span class="cn-leer">Leer →</span>
         </div>
       </div>`;
+
+    const open = () => mostrarNoticiaModal(noticia);
+    card.addEventListener('click', open);
+    card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
     grid.appendChild(card);
   });
 }
@@ -274,5 +286,52 @@ function showErrorMessage(message) {
   const grid = getElement('.grid-noticias');
   if (grid) {
     grid.innerHTML = `<div class="sin-noticias">${sanitize(message)}</div>`;
+  }
+}
+
+// ── Modal de lectura de noticias ──────────────────────────────────────────────
+let _noticiaKeyHandler = null;
+
+export function mostrarNoticiaModal(noticia) {
+  const modal = getElement('#modal-noticia');
+  const body  = getElement('#noticia-modal-body');
+  if (!modal || !body) return;
+
+  const imgSrc = noticia.imagen || noticia.imagen_url || '';
+  const imgHtml = imgSrc
+    ? `<div class="nm-imagen">
+         <img src="${sanitize(imgSrc)}" alt="${sanitize(noticia.titulo)}"
+              onerror="this.onerror=null;this.parentNode.style.display='none'">
+       </div>`
+    : '';
+
+  body.innerHTML = `
+    ${imgHtml}
+    <div class="nm-body">
+      <span class="nm-categoria">${sanitize(noticia.categoria || 'General')}</span>
+      <h2 id="noticia-modal-titulo">${sanitize(noticia.titulo)}</h2>
+      <time class="nm-fecha">📅 ${sanitize(noticia.fecha)}</time>
+      ${noticia.descripcion ? `<p class="nm-descripcion">${sanitize(noticia.descripcion)}</p>` : ''}
+      <div class="nm-texto">${sanitize(noticia.texto || '').replace(/\n/g, '<br>')}</div>
+    </div>`;
+
+  modal.classList.add('visible');
+  modal.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+
+  if (_noticiaKeyHandler) document.removeEventListener('keydown', _noticiaKeyHandler);
+  _noticiaKeyHandler = e => { if (e.key === 'Escape') cerrarNoticiaModal(); };
+  document.addEventListener('keydown', _noticiaKeyHandler);
+}
+
+export function cerrarNoticiaModal() {
+  const modal = getElement('#modal-noticia');
+  if (!modal) return;
+  modal.classList.remove('visible');
+  modal.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+  if (_noticiaKeyHandler) {
+    document.removeEventListener('keydown', _noticiaKeyHandler);
+    _noticiaKeyHandler = null;
   }
 }

@@ -1,7 +1,5 @@
 # render.yaml — Configuración de deploy para Render.com
 # Documentación: https://render.com/docs/blueprint-spec
-#
-# Este servicio sirve tanto el frontend estático como la API Express.
 # No se necesita un servicio separado de base de datos: se usa TiDB Serverless.
 
 services:

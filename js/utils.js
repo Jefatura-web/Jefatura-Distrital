@@ -1,8 +1,3 @@
-/**
- * Utilidades compartidas del cliente
- * Incluye: helpers DOM, fetch seguro, formateo y resolución de la URL de API.
- * (Absorbe el ex-archivo apiConfig.js)
- */
 
 // ── API base URL ─────────────────────────────────────────────────────────────
 // Orden de prioridad:

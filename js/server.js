@@ -57,8 +57,11 @@ const startServer = () => {
   const noticiasRoutes = require('./noticiasRoutes');
   app.use('/noticias', noticiasRoutes);
 
-  const actividadesRoutes = require('./actividadesController'); // el mismo archivo expone el router
+  const actividadesRoutes = require('./actividadesController');
   app.use('/actividades', actividadesRoutes);
+
+  const uploadRoutes = require('./uploadController');
+  app.use('/upload', uploadRoutes);
 
   // ===============================
   // MANEJO DE ERRORES

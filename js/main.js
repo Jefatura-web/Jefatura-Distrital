@@ -4,7 +4,7 @@
 
 import { cargarNoticias, initSearch, showAppAlert, cerrarNoticiaModal } from './news.js';
 import { initCalendar } from './calendar.js';
-import { getElement, getApiBaseUrl } from './utils.js';
+import { getElement, getApiBaseUrl } from './utils.js';  // ← ya no necesita apiConfig.js
 
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('🚀 Aplicación iniciada');

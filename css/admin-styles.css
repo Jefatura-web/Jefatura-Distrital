@@ -32,6 +32,9 @@ body.admin-page{background:var(--bg);font-family:Inter, system-ui, Arial, sans-s
 .pn-meta{margin-top:12px;font-size:12px;color:var(--muted);display:flex;gap:10px}
 .app-alert{position:fixed;right:20px;bottom:20px;z-index:1200}
 @media (max-width:900px){.admin-layout{grid-template-columns:1fr;padding:0 12px}.preview-container{position:relative;top:0}}
+/* ──────────────────────────────────── */
+/* PANEL ADMINISTRATIVO - ESTILOS */
+/* ──────────────────────────────────── */
 
 :root {
   --azul-marino: #0d2154;
@@ -534,7 +537,6 @@ body.admin-page{background:var(--bg);font-family:Inter, system-ui, Arial, sans-s
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
-  line-clamp: 2;
   -webkit-box-orient: vertical;
 }
 
@@ -548,7 +550,6 @@ body.admin-page{background:var(--bg);font-family:Inter, system-ui, Arial, sans-s
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 3;
-  line-clamp: 3;
   -webkit-box-orient: vertical;
 }
 
@@ -661,102 +662,53 @@ body.admin-page{background:var(--bg);font-family:Inter, system-ui, Arial, sans-s
   }
 }
 
-/* ── TOKEN GLOBAL ─────────────────────────────────────────── */
-.admin-token-bar {
-  max-width: 1400px;
-  margin: 0 auto 28px;
-  background: white;
-  border-radius: 14px;
-  padding: 20px 28px;
-  box-shadow: 0 4px 16px rgba(13, 33, 84, 0.08);
+/* ── Upload de imágenes ────────────────────────────────── */
+.upload-field-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.upload-field-wrap input[type="text"] {
+  flex: 1;
+}
+.btn-upload-img {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, var(--azul-marino, #0d2154), var(--azul-medio, #1a3a7a));
+  color: white;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+.btn-upload-img:hover { opacity: 0.85; }
+.btn-upload-img input[type="file"] {
+  display: none;
+}
+.btn-upload-append {
+  margin-top: 8px;
+}
+.upload-append-wrap {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   flex-wrap: wrap;
-  border-left: 4px solid var(--dorado, #c9a227);
 }
-
-.admin-token-label {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--azul-marino, #0d2154);
-  white-space: nowrap;
-  margin: 0;
-}
-
-.admin-token-bar input {
-  flex: 1;
-  min-width: 220px;
-  padding: 10px 14px;
-  border: 2px solid var(--borde, #dde3ef);
-  border-radius: 8px;
-  font-size: 14px;
-  font-family: 'Source Sans 3', sans-serif;
-  transition: border-color 0.2s;
-}
-
-.admin-token-bar input:focus-visible {
-  outline: none;
-  border-color: var(--celeste, #4a90c4);
-  box-shadow: 0 0 0 3px rgba(74, 144, 196, 0.12);
-}
-
-.admin-token-hint {
-  font-size: 12px;
+.upload-status {
+  font-size: 13px;
   color: var(--gris-texto, #444b5e);
-  white-space: nowrap;
 }
-
-/* ── DIVISOR DE SECCIÓN ───────────────────────────────────── */
-.admin-section-divider {
-  max-width: 1400px;
-  margin: 36px auto 20px;
-  font-family: 'Playfair Display', serif;
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--azul-marino, #0d2154);
-  padding-bottom: 10px;
-  border-bottom: 3px solid var(--dorado, #c9a227);
-  letter-spacing: 0.2px;
+.upload-preview-thumb {
+  margin-top: 8px;
 }
-
-/* ── LAYOUT: form (izq) | aside derecho (preview + lista) ─ */
-.admin-layout {
-  grid-template-columns: 3fr 2fr;
-}
-
-.admin-preview-section {
-  position: sticky;
-  top: 88px;
-  align-self: start;
-  max-height: calc(100vh - 120px);
-  overflow-y: auto;
-  padding: 32px;
-  scrollbar-width: thin;
-}
-
-/* select dentro del admin (nivel) */
-.form-group select {
-  width: 100%;
-  padding: 12px 14px;
-  border: 2px solid var(--borde, #dde3ef);
+.upload-preview-thumb img {
+  height: 80px;
   border-radius: 8px;
-  font-family: 'Source Sans 3', sans-serif;
-  font-size: 14px;
-  color: var(--gris-texto, #444b5e);
-  background: white;
-  cursor: pointer;
-  transition: border-color 0.2s;
-}
-
-.form-group select:focus-visible {
-  outline: none;
-  border-color: var(--celeste, #4a90c4);
-}
-
-@media (max-width: 900px) {
-  .admin-token-bar { flex-direction: column; align-items: flex-start; gap: 10px; }
-  .admin-token-hint { white-space: normal; }
-  .admin-layout { grid-template-columns: 1fr; }
-  .admin-preview-section { position: relative; top: 0; max-height: none; }
+  object-fit: cover;
+  border: 2px solid var(--borde, #dde3ef);
 }

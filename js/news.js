@@ -180,14 +180,12 @@ function renderNoticiasList(noticias = getAvailableNoticias().slice(0, 8)) {
     card.tabIndex = 0;
     card.setAttribute('role', 'button');
     card.setAttribute('aria-label', `Leer: ${sanitize(noticia.titulo)}`);
-
-    const color   = COLORES[i % COLORES.length];
-    const imgSrc  = noticia.imagen || noticia.imagen_url || '';
+    const color  = COLORES[i % COLORES.length];
+    const imgSrc = noticia.imagen || noticia.imagen_url || '';
     const imgHtml = imgSrc
       ? `<img src="${sanitize(imgSrc)}" alt="${sanitize(noticia.titulo)}" loading="lazy"
               onerror="this.onerror=null;this.parentNode.classList.add('cn-imagen-fallback');this.remove()">`
       : '';
-
     card.innerHTML = `
       <div class="cn-imagen ${color}">${imgHtml}<span class="cn-emoji" aria-hidden="true">📰</span></div>
       <div class="cn-body">
@@ -199,7 +197,6 @@ function renderNoticiasList(noticias = getAvailableNoticias().slice(0, 8)) {
           <span class="cn-leer">Leer →</span>
         </div>
       </div>`;
-
     const open = () => mostrarNoticiaModal(noticia);
     card.addEventListener('click', open);
     card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });

@@ -10,13 +10,9 @@ import { renderCalendar } from './calendar.js';
 
 const TOKEN_KEY = 'jefatura_admin_token';
 
-const getToken = () => {
-  // Prioridad: campo global visible → sessionStorage
-  const globalField = getElement('#admin-token-global');
-  const fromField = String(globalField?.value || '').replace(/^Bearer\s+/i, '').trim();
-  if (fromField) return fromField;
-  return String(sessionStorage.getItem(TOKEN_KEY) || '').replace(/^Bearer\s+/i, '');
-};
+// ── Helpers de token ──────────────────────────────────────────────────────────
+const getToken = () =>
+  String(sessionStorage.getItem(TOKEN_KEY) || '').replace(/^Bearer\s+/i, '');
 
 // ── Preview en vivo ───────────────────────────────────────────────────────────
 function initLivePreview() {
@@ -121,7 +117,8 @@ async function handleFormSubmit(event, onSuccess) {
   const noticiaId = String(formData.get('id') || '').trim();
   const isUpdate  = noticiaId.length > 0;
 
-  const token = getToken();
+  const tokenRaw = String(tokenInput?.value || '').trim();
+  const token    = tokenRaw.replace(/^Bearer\s+/i, '');
 
   if (!token) {
     showAppAlert('Debés ingresar el token de administración.', 'error');
@@ -255,6 +252,7 @@ async function handleEdit(id) {
     getElement('#noticia-imagen').value      = noticia.imagen     || '';
     getElement('#noticia-destacada').checked = !!noticia.destacada;
     getElement('#noticia-publicada').checked = noticia.publicada === 1 || noticia.publicada === true;
+    getElement('#admin-token').value         = getToken();
 
     const title = getElement('#noticia-form-title');
     if (title) title.textContent = 'Editar noticia';
@@ -308,7 +306,7 @@ function initCancelButton() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  // Campo de token global: pre-llenar desde sessionStorage y sincronizar al escribir
+  // Token global: pre-llenar desde sessionStorage y sincronizar al escribir
   const globalTokenInput = getElement('#admin-token-global');
   const savedToken = sessionStorage.getItem(TOKEN_KEY) || '';
   if (globalTokenInput && savedToken) globalTokenInput.value = savedToken;
@@ -329,6 +327,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initActividadesForm();
   loadAdminActividades();
+  initUpload();
 });
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -379,7 +378,8 @@ async function handleActividadSubmit(event) {
   const actividadId = String(formData.get('id') || '').trim();
   const isUpdate = actividadId.length > 0;
 
-  const token = getToken();
+  const tokenInput = getElement('#actividad-token');
+  const token = String(tokenInput?.value || '').trim().replace(/^Bearer\s+/i, '');
 
   if (!token) {
     showAppAlert('Debés ingresar el token de administración.', 'error');
@@ -510,6 +510,7 @@ function handleActividadEdit(actividad) {
   getElement('#actividad-inspector').value = actividad.inspector_nombre || '';
   getElement('#actividad-descripcion').value = actividad.descripcion || '';
   getElement('#actividad-imagenes').value = (actividad.imagenes || []).join('\n');
+  getElement('#actividad-token').value = getToken();
 
   const title = getElement('#actividad-form-title');
   if (title) title.textContent = 'Editar actividad';
@@ -539,5 +540,77 @@ async function handleActividadDelete(id, card) {
   } catch (error) {
     handleError(error, 'handleActividadDelete');
     showAppAlert('No se pudo eliminar la actividad.', 'error');
+  }
+}
+/* ════════════════════════════════════════════════════════════════════════════
+ * UPLOAD DE IMÁGENES — multer + Cloudinary via POST /upload
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+function initUpload() {
+  document.querySelectorAll('.upload-file-input').forEach(input => {
+    input.addEventListener('change', handleUpload);
+  });
+}
+
+async function handleUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const token = getToken();
+  if (!token) {
+    showAppAlert('Ingresá el token antes de subir fotos.', 'error');
+    e.target.value = '';
+    return;
+  }
+
+  const targetId  = e.target.dataset.target;
+  const previewId = e.target.dataset.preview;
+  const mode      = e.target.dataset.mode || 'set';
+  const statusEl  = getElement('#upload-actividad-status');
+  const label     = e.target.closest('.btn-upload-img');
+
+  if (label) { label.dataset.original = label.childNodes[0]?.textContent?.trim() || ''; }
+  if (label?.childNodes[0]) label.childNodes[0].textContent = ' ⏳ Subiendo…';
+  if (statusEl) statusEl.textContent = '⏳ Subiendo…';
+
+  try {
+    const formData = new FormData();
+    formData.append('image', file);
+
+    const result = await apiFetch('/upload', {
+      method:  'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body:    formData
+      // Sin Content-Type: el navegador lo pone con el boundary correcto
+    });
+
+    if (!result?.ok) throw new Error(result?.error || 'Error al subir');
+
+    const target = getElement(`#${targetId}`);
+    if (target) {
+      if (mode === 'append') {
+        const current = target.value.trim();
+        target.value  = current ? `${current}\n${result.url}` : result.url;
+      } else {
+        target.value = result.url;
+        const preview = previewId ? getElement(`#${previewId}`) : null;
+        if (preview) preview.innerHTML = `<img src="${sanitize(result.url)}" alt="Preview">`;
+        target.dispatchEvent(new Event('input')); // actualiza live preview
+      }
+    }
+
+    showAppAlert('✅ Foto subida correctamente.', 'success');
+    if (statusEl) statusEl.textContent = '✅ Subida';
+    setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+  } catch (err) {
+    handleError(err, 'handleUpload');
+    showAppAlert(`No se pudo subir la foto: ${err.message || 'error desconocido'}`, 'error');
+    if (statusEl) statusEl.textContent = '❌ Error';
+    setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 4000);
+  } finally {
+    if (label?.childNodes[0]) {
+      label.childNodes[0].textContent = label.dataset.original || ' 📎';
+    }
+    e.target.value = '';
   }
 }

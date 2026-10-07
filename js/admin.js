@@ -182,6 +182,52 @@ async function handleFormSubmit(event, onSuccess) {
   }
 }
 
+// ── Confirmación inline + helpers de tarjeta ──────────────────────────────────
+/**
+ * Reemplaza los botones de acción de una tarjeta con "¿Eliminar? [Sí] [No]".
+ * Guarda los botones originales en un WeakMap para poder restaurarlos.
+ */
+const _origActions = new WeakMap();
+
+function showInlineConfirm(card, onConfirm, onCancel) {
+  const actionsEl = card.querySelector('.admin-news-actions');
+  if (!actionsEl) return;
+  if (_origActions.has(card)) return; // ya en confirmación
+
+  _origActions.set(card, actionsEl.innerHTML);
+  card.classList.add('card-confirming');
+
+  actionsEl.innerHTML = `
+    <span class="confirm-label">¿Eliminar?</span>
+    <button type="button" class="btn-danger confirm-yes">Sí, eliminar</button>
+    <button type="button" class="btn-secondary confirm-no">Cancelar</button>`;
+
+  actionsEl.querySelector('.confirm-yes').addEventListener('click', () => {
+    card.classList.remove('card-confirming');
+    onConfirm();
+  });
+  actionsEl.querySelector('.confirm-no').addEventListener('click', () => {
+    cancelInlineConfirm(card);
+    if (typeof onCancel === 'function') onCancel();
+  });
+}
+
+function cancelInlineConfirm(card) {
+  const actionsEl = card.querySelector('.admin-news-actions');
+  const orig = _origActions.get(card);
+  if (!actionsEl || !orig) return;
+  actionsEl.innerHTML = orig;
+  _origActions.delete(card);
+  card.classList.remove('card-confirming');
+}
+
+/** Marca la tarjeta que está siendo editada y limpia cualquier otra. */
+function setActiveEditCard(card) {
+  document.querySelectorAll('.admin-news-card.card-editing')
+    .forEach(c => c.classList.remove('card-editing'));
+  card?.classList.add('card-editing');
+}
+
 // ── Listado admin ─────────────────────────────────────────────────────────────
 function formatNewsCard(noticia) {
   const cat    = sanitize(noticia.categoria || 'General');
@@ -259,7 +305,9 @@ async function handleEdit(id) {
     const btn = getElement('#form-submit-button');
     if (btn) btn.textContent = 'Actualizar noticia';
 
-    // Scroll al formulario
+    // Marcar tarjeta activa y hacer scroll
+    const card = document.querySelector(`.admin-news-card[data-id="${id}"]`);
+    setActiveEditCard(card);
     getElement('#form-crear-noticia')?.scrollIntoView({ behavior: 'smooth' });
   } catch (error) {
     handleError(error, 'handleEdit');
@@ -267,29 +315,27 @@ async function handleEdit(id) {
   }
 }
 
-async function handleDelete(id, card) {
-  if (!id) return;
-  if (!window.confirm('¿Eliminar esta noticia? Esta acción no es reversible.')) return;
-
-  const token = getToken();
-  if (!token) {
-    showAppAlert('No hay token válido. Ingresá el token primero.', 'error');
-    return;
-  }
-
-  try {
-    await apiFetch(`/noticias/${id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    card?.remove();
-    showAppAlert('Noticia eliminada.', 'success');
-    await cargarNoticias();
-    renderNoticiasList();
-  } catch (error) {
-    handleError(error, 'handleDelete');
-    showAppAlert('No se pudo eliminar la noticia.', 'error');
-  }
+function handleDelete(id, card) {
+  if (!id || !card) return;
+  showInlineConfirm(card, async () => {
+    const token = getToken();
+    if (!token) { showAppAlert('No hay token válido. Ingresá el token primero.', 'error'); return; }
+    try {
+      await apiFetch(`/noticias/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      card.classList.add('card-removing');
+      setTimeout(() => card.remove(), 350);
+      showAppAlert('Noticia eliminada.', 'success');
+      await cargarNoticias();
+      renderNoticiasList();
+    } catch (error) {
+      handleError(error, 'handleDelete');
+      showAppAlert('No se pudo eliminar la noticia.', 'error');
+      cancelInlineConfirm(card);
+    }
+  }, () => cancelInlineConfirm(card));
 }
 
 // ── Cancelar / reset formulario ───────────────────────────────────────────────
@@ -301,20 +347,16 @@ function initCancelButton() {
     const btn = getElement('#form-submit-button');
     if (btn) btn.textContent = 'Crear noticia';
     getElement('#noticia-id').value = '';
+    setActiveEditCard(null);
   });
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  // Token global: pre-llenar desde sessionStorage y sincronizar al escribir
-  const globalTokenInput = getElement('#admin-token-global');
-  const savedToken = sessionStorage.getItem(TOKEN_KEY) || '';
-  if (globalTokenInput && savedToken) globalTokenInput.value = savedToken;
-  globalTokenInput?.addEventListener('input', () => {
-    const t = String(globalTokenInput.value || '').replace(/^Bearer\s+/i, '').trim();
-    if (t) sessionStorage.setItem(TOKEN_KEY, t);
-    else sessionStorage.removeItem(TOKEN_KEY);
-  });
+  // Restaurar token de sesión si existe
+  const token = getToken();
+  const tokenInput = getElement('#admin-token');
+  if (token && tokenInput) tokenInput.value = token;
 
   initLivePreview();
   initCancelButton();
@@ -327,7 +369,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initActividadesForm();
   loadAdminActividades();
-  initUpload();
 });
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -364,7 +405,10 @@ function initActividadesForm() {
   if (tokenInput) tokenInput.value = getToken();
 
   form.addEventListener('submit', handleActividadSubmit);
-  getElement('#actividad-cancel-button')?.addEventListener('click', resetActividadForm);
+  getElement('#actividad-cancel-button')?.addEventListener('click', () => {
+    resetActividadForm();
+    setActiveEditCard(null);
+  });
   getElement('#actividad-filtro-nivel')?.addEventListener('change', loadAdminActividades);
 }
 
@@ -517,100 +561,28 @@ function handleActividadEdit(actividad) {
   const btn = getElement('#actividad-submit-button');
   if (btn) btn.textContent = 'Actualizar actividad';
 
+  const card = document.querySelector(`#admin-actividades-panel .admin-news-card[data-id="${actividad.id}"]`);
+  setActiveEditCard(card);
   getElement('#form-crear-actividad')?.scrollIntoView({ behavior: 'smooth' });
 }
 
-async function handleActividadDelete(id, card) {
-  if (!id) return;
-  if (!window.confirm('¿Eliminar esta actividad? Esta acción no es reversible.')) return;
-
-  const token = getToken();
-  if (!token) {
-    showAppAlert('No hay token válido. Ingresá el token primero.', 'error');
-    return;
-  }
-
-  try {
-    await apiFetch(`/actividades/${id}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    card?.remove();
-    showAppAlert('Actividad eliminada.', 'success');
-  } catch (error) {
-    handleError(error, 'handleActividadDelete');
-    showAppAlert('No se pudo eliminar la actividad.', 'error');
-  }
-}
-/* ════════════════════════════════════════════════════════════════════════════
- * UPLOAD DE IMÁGENES — multer + Cloudinary via POST /upload
- * ════════════════════════════════════════════════════════════════════════════ */
-
-function initUpload() {
-  document.querySelectorAll('.upload-file-input').forEach(input => {
-    input.addEventListener('change', handleUpload);
-  });
-}
-
-async function handleUpload(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const token = getToken();
-  if (!token) {
-    showAppAlert('Ingresá el token antes de subir fotos.', 'error');
-    e.target.value = '';
-    return;
-  }
-
-  const targetId  = e.target.dataset.target;
-  const previewId = e.target.dataset.preview;
-  const mode      = e.target.dataset.mode || 'set';
-  const statusEl  = getElement('#upload-actividad-status');
-  const label     = e.target.closest('.btn-upload-img');
-
-  if (label) { label.dataset.original = label.childNodes[0]?.textContent?.trim() || ''; }
-  if (label?.childNodes[0]) label.childNodes[0].textContent = ' ⏳ Subiendo…';
-  if (statusEl) statusEl.textContent = '⏳ Subiendo…';
-
-  try {
-    const formData = new FormData();
-    formData.append('image', file);
-
-    const result = await apiFetch('/upload', {
-      method:  'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
-      body:    formData
-      // Sin Content-Type: el navegador lo pone con el boundary correcto
-    });
-
-    if (!result?.ok) throw new Error(result?.error || 'Error al subir');
-
-    const target = getElement(`#${targetId}`);
-    if (target) {
-      if (mode === 'append') {
-        const current = target.value.trim();
-        target.value  = current ? `${current}\n${result.url}` : result.url;
-      } else {
-        target.value = result.url;
-        const preview = previewId ? getElement(`#${previewId}`) : null;
-        if (preview) preview.innerHTML = `<img src="${sanitize(result.url)}" alt="Preview">`;
-        target.dispatchEvent(new Event('input')); // actualiza live preview
-      }
+function handleActividadDelete(id, card) {
+  if (!id || !card) return;
+  showInlineConfirm(card, async () => {
+    const token = getToken();
+    if (!token) { showAppAlert('No hay token válido. Ingresá el token primero.', 'error'); return; }
+    try {
+      await apiFetch(`/actividades/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      card.classList.add('card-removing');
+      setTimeout(() => card.remove(), 350);
+      showAppAlert('Actividad eliminada.', 'success');
+    } catch (error) {
+      handleError(error, 'handleActividadDelete');
+      showAppAlert('No se pudo eliminar la actividad.', 'error');
+      cancelInlineConfirm(card);
     }
-
-    showAppAlert('✅ Foto subida correctamente.', 'success');
-    if (statusEl) statusEl.textContent = '✅ Subida';
-    setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
-  } catch (err) {
-    handleError(err, 'handleUpload');
-    showAppAlert(`No se pudo subir la foto: ${err.message || 'error desconocido'}`, 'error');
-    if (statusEl) statusEl.textContent = '❌ Error';
-    setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 4000);
-  } finally {
-    if (label?.childNodes[0]) {
-      label.childNodes[0].textContent = label.dataset.original || ' 📎';
-    }
-    e.target.value = '';
-  }
+  }, () => cancelInlineConfirm(card));
 }

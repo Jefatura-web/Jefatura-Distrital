@@ -37,19 +37,6 @@
         <span class="search-hint" aria-hidden="true">🔎</span>
       </form>
 
-      <!-- Botón de acceso administrativo mejorado -->
-      <div class="admin-access">
-        <button id="btn-subir-noticias" class="btn-admin-access" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Acceso administrativo">
-          <span class="aa-icon" aria-hidden="true">🔒</span>
-          <span class="aa-text">Acceso</span>
-          <span class="aa-caret" aria-hidden="true">▾</span>
-        </button>
-        <ul id="admin-access-menu" class="admin-access-menu" role="menu" aria-label="Opciones de acceso administrativo" aria-hidden="true">
-          <li role="menuitem"><button id="admin-open-panel" class="menu-btn">Abrir panel</button></li>
-          <li role="menuitem"><button id="admin-use-other" class="menu-btn">Usar otro token</button></li>
-          <li role="menuitem"><button id="admin-clear-token" class="menu-btn">Eliminar token guardado</button></li>
-        </ul>
-      </div>
       <button id="nav-toggle" class="nav-toggle" aria-expanded="false" aria-label="Abrir menú principal">☰</button>
     </div>
   </header>
@@ -342,6 +329,9 @@
     </div>
     <div class="footer-bottom">
       <span>© 2026 Jefatura Distrital Quilmes — DGCyE Provincia de Buenos Aires</span>
+      <button id="btn-subir-noticias" class="btn-admin-access footer-admin-access" type="button">
+        <span aria-hidden="true">🔒</span> Acceso administrativo
+      </button>
     </div>
   </footer>
   <!-- Modal de lectura de noticias -->

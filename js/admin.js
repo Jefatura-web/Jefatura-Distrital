@@ -8,11 +8,12 @@ import { apiFetch, getElement, sanitize, handleError } from './utils.js';
 import { cargarNoticias, renderNoticiasList, showAppAlert } from './news.js';
 import { renderCalendar } from './calendar.js';
 
-const TOKEN_KEY = 'jefatura_admin_token';
-
-// ── Helpers de token ──────────────────────────────────────────────────────────
-const getToken = () =>
-  String(sessionStorage.getItem(TOKEN_KEY) || '').replace(/^Bearer\s+/i, '');
+// El token vive solamente en memoria mientras esta pestaña está abierta. Nunca
+// se guarda en localStorage, sessionStorage, URLs ni cookies.
+let activeToken = '';
+const normalizeToken = value => String(value || '').replace(/^Bearer\s+/i, '').trim();
+const getToken = () => activeToken;
+const setToken = value => { activeToken = normalizeToken(value); return activeToken; };
 
 // ── Preview en vivo ───────────────────────────────────────────────────────────
 function initLivePreview() {
@@ -118,7 +119,7 @@ async function handleFormSubmit(event, onSuccess) {
   const isUpdate  = noticiaId.length > 0;
 
   const tokenRaw = String(tokenInput?.value || '').trim();
-  const token    = tokenRaw.replace(/^Bearer\s+/i, '');
+  const token    = setToken(tokenRaw);
 
   if (!token) {
     showAppAlert('Debés ingresar el token de administración.', 'error');
@@ -260,8 +261,16 @@ async function loadAdminNoticias() {
   if (!panel) return;
   panel.innerHTML = '<div class="admin-loading">Cargando noticias…</div>';
 
+  const token = getToken();
+  if (!token) {
+    panel.innerHTML = '<div class="admin-empty">Ingresá el token para ver y administrar las noticias.</div>';
+    return;
+  }
+
   try {
-    const noticias = await apiFetch('/noticias?limit=20');
+    const noticias = await apiFetch('/noticias/admin?limit=20', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
     if (!Array.isArray(noticias)) throw new Error('Formato de respuesta inválido');
 
     panel.innerHTML = noticias.length === 0
@@ -286,7 +295,9 @@ function attachCardEvents() {
 async function handleEdit(id) {
   if (!id) return;
   try {
-    const noticia = await apiFetch(`/noticias/${id}`);
+    const noticia = await apiFetch(`/noticias/admin/${id}`, {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    });
     if (!noticia?.id) throw new Error('Noticia no encontrada');
 
     getElement('#noticia-id').value          = noticia.id;
@@ -296,6 +307,7 @@ async function handleEdit(id) {
     getElement('#noticia-categoria').value   = noticia.categoria_id || '';
     getElement('#noticia-fecha').value       = noticia.fecha      || '';
     getElement('#noticia-imagen').value      = noticia.imagen     || '';
+    renderSinglePreview(noticia.imagen || '');
     getElement('#noticia-destacada').checked = !!noticia.destacada;
     getElement('#noticia-publicada').checked = noticia.publicada === 1 || noticia.publicada === true;
     getElement('#admin-token').value         = getToken();
@@ -353,10 +365,8 @@ function initCancelButton() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  // Restaurar token de sesión si existe
-  const token = getToken();
-  const tokenInput = getElement('#admin-token');
-  if (token && tokenInput) tokenInput.value = token;
+  // Limpia una versión antigua del sitio que pudiera haber dejado un token.
+  sessionStorage.removeItem('jefatura_admin_token');
 
   initLivePreview();
   initCancelButton();
@@ -369,6 +379,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initActividadesForm();
   loadAdminActividades();
+
+  document.querySelectorAll('#admin-token, #actividad-token').forEach(input => {
+    input.addEventListener('change', () => {
+      setToken(input.value);
+      loadAdminNoticias();
+      loadAdminActividades();
+    });
+  });
+  initImageUploads();
 });
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -423,7 +442,7 @@ async function handleActividadSubmit(event) {
   const isUpdate = actividadId.length > 0;
 
   const tokenInput = getElement('#actividad-token');
-  const token = String(tokenInput?.value || '').trim().replace(/^Bearer\s+/i, '');
+  const token = setToken(tokenInput?.value);
 
   if (!token) {
     showAppAlert('Debés ingresar el token de administración.', 'error');
@@ -554,6 +573,7 @@ function handleActividadEdit(actividad) {
   getElement('#actividad-inspector').value = actividad.inspector_nombre || '';
   getElement('#actividad-descripcion').value = actividad.descripcion || '';
   getElement('#actividad-imagenes').value = (actividad.imagenes || []).join('\n');
+  renderActivityPreviews();
   getElement('#actividad-token').value = getToken();
 
   const title = getElement('#actividad-form-title');
@@ -585,4 +605,142 @@ function handleActividadDelete(id, card) {
       cancelInlineConfirm(card);
     }
   }, () => cancelInlineConfirm(card));
+}
+
+// ── Carga de imágenes ─────────────────────────────────────────────────────────
+const ACCEPTED_IMAGE_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif',
+  'image/heic', 'image/heif'
+]);
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+const MAX_FILES_PER_BATCH = 20;
+
+function getUploadStatus(input) {
+  return input.dataset.mode === 'append'
+    ? getElement('#upload-actividad-status')
+    : getElement('#upload-noticia-status');
+}
+
+function showUploadStatus(input, message, isError = false) {
+  const status = getUploadStatus(input);
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('upload-status-error', isError);
+}
+
+function renderSinglePreview(url) {
+  const preview = getElement('#preview-noticia-img');
+  if (!preview) return;
+  preview.replaceChildren();
+  if (!url) return;
+  const image = document.createElement('img');
+  image.src = url;
+  image.alt = 'Vista previa de la foto seleccionada';
+  image.loading = 'lazy';
+  preview.appendChild(image);
+}
+
+function renderActivityPreviews() {
+  const list = getElement('#actividad-photo-list');
+  const textarea = getElement('#actividad-imagenes');
+  if (!list || !textarea) return;
+
+  list.replaceChildren();
+  parseImagenes(textarea.value).forEach((url, index) => {
+    const item = document.createElement('div');
+    item.className = 'upload-preview-item';
+
+    const image = document.createElement('img');
+    image.src = url;
+    image.alt = `Foto ${index + 1}`;
+    image.loading = 'lazy';
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'upload-preview-remove';
+    remove.setAttribute('aria-label', `Quitar foto ${index + 1}`);
+    remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      const urls = parseImagenes(textarea.value);
+      urls.splice(index, 1);
+      textarea.value = urls.join('\n');
+      renderActivityPreviews();
+    });
+
+    item.append(image, remove);
+    list.appendChild(item);
+  });
+}
+
+async function uploadFile(file, token) {
+  const formData = new FormData();
+  formData.append('image', file, file.name);
+  const result = await apiFetch('/upload', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body: formData
+  });
+  if (!result?.ok || !result.url) throw new Error(result?.error || 'El servidor no devolvió una URL de imagen.');
+  return result.url;
+}
+
+async function handleImageSelection(input) {
+  const files = Array.from(input.files || []);
+  if (files.length === 0) return;
+
+  const tokenSource = input.dataset.mode === 'append' ? '#actividad-token' : '#admin-token';
+  const token = setToken(getElement(tokenSource)?.value);
+  if (!token) {
+    showUploadStatus(input, 'Ingresá el token antes de subir fotos.', true);
+    input.value = '';
+    return;
+  }
+
+  if (files.length > MAX_FILES_PER_BATCH) {
+    showUploadStatus(input, `Elegí hasta ${MAX_FILES_PER_BATCH} fotos por tanda.`, true);
+    input.value = '';
+    return;
+  }
+
+  const invalid = files.find(file => !ACCEPTED_IMAGE_TYPES.has(file.type) || file.size > MAX_IMAGE_SIZE);
+  if (invalid) {
+    showUploadStatus(input, 'Usá fotos JPG, PNG, WebP, GIF, AVIF o HEIC de hasta 10 MB cada una.', true);
+    input.value = '';
+    return;
+  }
+
+  const target = getElement(`#${input.dataset.target}`);
+  if (!target) return;
+
+  try {
+    const urls = [];
+    for (const [index, file] of files.entries()) {
+      showUploadStatus(input, `Subiendo ${index + 1} de ${files.length}: ${file.name}`);
+      urls.push(await uploadFile(file, token));
+    }
+
+    if (input.dataset.mode === 'append') {
+      const existing = parseImagenes(target.value);
+      target.value = [...existing, ...urls].join('\n');
+      renderActivityPreviews();
+    } else {
+      target.value = urls[0];
+      renderSinglePreview(urls[0]);
+    }
+    showUploadStatus(input, `${urls.length} foto${urls.length === 1 ? '' : 's'} subida${urls.length === 1 ? '' : 's'} correctamente.`);
+  } catch (error) {
+    handleError(error, 'handleImageSelection');
+    showUploadStatus(input, error?.body?.error || error.message || 'No se pudo subir la foto.', true);
+  } finally {
+    input.value = '';
+  }
+}
+
+function initImageUploads() {
+  document.querySelectorAll('.upload-file-input').forEach(input => {
+    input.addEventListener('change', () => handleImageSelection(input));
+  });
+  getElement('#actividad-imagenes')?.addEventListener('input', renderActivityPreviews);
+  getElement('#noticia-imagen')?.addEventListener('input', event => renderSinglePreview(event.target.value.trim()));
+  renderActivityPreviews();
 }

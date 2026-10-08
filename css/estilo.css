@@ -178,6 +178,7 @@
       outline: none;
       background: linear-gradient(135deg, #173774, #1e4a97);
     }
+    .footer-admin-access { margin-left: auto; min-height: 38px; border-color: rgba(255,255,255,.28); }
     .boton-abc {
       background: var(--azul-marino);
       color: white;
@@ -1391,6 +1392,8 @@
 }
 
 @media (max-width: 600px) {
+  .footer-bottom { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .footer-admin-access { margin-left: 0; width: 100%; }
   .nivel-header h1 { font-size: 20px; }
   .nivel-grid-grados { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
 }

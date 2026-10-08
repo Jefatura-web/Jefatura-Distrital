@@ -14,6 +14,7 @@ const cloudinary = require('cloudinary').v2;
 const crypto     = require('crypto');
 
 const router = express.Router();
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/heic', 'image/heif']);
 
 // ── Auth local (mismo patrón que actividadesController) ───────────────────────
 function timingSafeEqual(a, b) {
@@ -38,8 +39,8 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits:  { fileSize: 10 * 1024 * 1024 },   // 10 MB máximo
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) cb(null, true);
-    else cb(new Error('Solo se permiten imágenes (jpg, png, webp, gif…)'));
+    if (ALLOWED_IMAGE_TYPES.has(file.mimetype)) cb(null, true);
+    else cb(new Error('Solo se permiten imágenes JPG, PNG, WebP, GIF, AVIF, HEIC o HEIF.'));
   }
 });
 
@@ -55,7 +56,11 @@ function subirACloudinary(buffer, nombreOriginal) {
   return new Promise((resolve, reject) => {
     const publicId = `jefatura/${Date.now()}-${String(nombreOriginal).replace(/[^a-zA-Z0-9._-]/g, '-')}`;
     const stream   = cloudinary.uploader.upload_stream(
-      { public_id: publicId, transformation: [{ quality: 'auto', fetch_format: 'auto' }] },
+      {
+        public_id: publicId,
+        resource_type: 'image',
+        transformation: [{ quality: 'auto', fetch_format: 'auto' }]
+      },
       (err, result) => { if (err) reject(err); else resolve(result); }
     );
     stream.end(buffer);

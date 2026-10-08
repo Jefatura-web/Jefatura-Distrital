@@ -13,7 +13,7 @@
     <div class="admin-topbar-content">
       <a href="/" class="admin-back-link">← Volver a inicio</a>
       <h1 class="admin-title">Panel administrativo</h1>
-      <span class="admin-status">Sesión activa</span>
+      <span class="admin-status">Token requerido</span>
     </div>
   </div>
 
@@ -75,13 +75,14 @@
               <label for="noticia-imagen">Imagen (opcional)</label>
               <div class="upload-field-wrap">
                 <input id="noticia-imagen" name="imagen_url" type="text" placeholder="URL o subí una foto →" />
-                <label class="btn-upload-img" title="Subir imagen desde tu computadora">
-                  📎
-                  <input type="file" accept="image/*" class="upload-file-input"
+              <label class="btn-upload-img" title="Subir imagen desde tu computadora">
+                📎 Elegir foto
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/heic,image/heif" class="upload-file-input"
                          data-target="noticia-imagen" data-preview="preview-noticia-img" />
-                </label>
-              </div>
-              <div id="preview-noticia-img" class="upload-preview-thumb"></div>
+              </label>
+            </div>
+            <div id="preview-noticia-img" class="upload-preview-thumb"></div>
+            <p id="upload-noticia-status" class="upload-status" role="status" aria-live="polite"></p>
             </div>
 
             <div class="form-options">
@@ -206,16 +207,17 @@
           </div>
           <div class="form-group">
             <label for="actividad-imagenes">Fotos (una URL por línea)</label>
-            <textarea id="actividad-imagenes" name="imagenes" rows="4" placeholder="https://.../foto1.jpg&#10;https://.../foto2.jpg"></textarea>
+            <textarea id="actividad-imagenes" name="imagenes" rows="4" placeholder="Podés pegar URLs o elegir varias fotos debajo."></textarea>
             <div class="upload-append-wrap">
-              <label class="btn-upload-img btn-upload-append" title="Subir foto y agregar al listado">
-                📎 Subir foto y agregar
-                <input type="file" accept="image/*" class="upload-file-input"
+              <label class="btn-upload-img btn-upload-append" title="Elegir y subir fotos desde tu computadora">
+                📎 Elegir fotos
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/heic,image/heif" multiple class="upload-file-input"
                        data-target="actividad-imagenes" data-mode="append" />
               </label>
               <span id="upload-actividad-status" class="upload-status"></span>
             </div>
-            <small>Al editar una actividad, esto reemplaza la galería completa por lo que escribas acá.</small>
+            <div id="actividad-photo-list" class="upload-preview-list" aria-live="polite"></div>
+            <small>Podés elegir varias fotos a la vez. Al editar, esta lista reemplaza la galería completa.</small>
           </div>
         </fieldset>
 

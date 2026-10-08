@@ -60,7 +60,7 @@ const startServer = () => {
   const actividadesRoutes = require('./actividadesController');
   app.use('/actividades', actividadesRoutes);
 
-  const uploadRoutes = require('./uploadController');
+  const uploadRoutes = require('./uploadController.js');
   app.use('/upload', uploadRoutes);
 
   // ===============================

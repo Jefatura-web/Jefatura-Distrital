@@ -18,12 +18,13 @@ const actividadesController = require('./actividadesController');
 // INICIALIZAR APLICACIÓN
 // ===============================
 const app = express();
+app.disable('x-powered-by');
 
 // ===============================
 // MIDDLEWARE
 // ===============================
 app.use(cors(config.cors));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, '..')));
 
 // ===============================

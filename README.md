@@ -73,7 +73,7 @@ npm start
 | `DB_PASSWORD` | (vacío o tu pass)   | Contraseña del cluster TiDB                    |
 | `DB_NAME`     | `jefatura_db`       | `jefatura_db`                                  |
 | `ADMIN_TOKEN` | cualquier string    | Token seguro (mín. 20 caracteres aleatorios)   |
-| `CORS_ORIGIN` | `*`                 | URL de Render:`https://jefatura-quilmes.onrender.com` |
+| `CORS_ORIGIN` | `*`                 | URL de Render: `https://jefatura-quilmes.onrender.com` (varias URLs, separadas por comas) |
 | `NODE_ENV`    | `development`       | `production`                                   |
 
 ---

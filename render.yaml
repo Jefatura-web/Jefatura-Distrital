@@ -39,7 +39,7 @@ services:
         sync: false   # Elegir un token fuerte; NO usar el del .env local
 
       # ── CORS ──────────────────────────────────────────────────────────────────
-      # Una vez desplegado, reemplazar * por la URL real de Render:
-      # Ej: https://jefatura-quilmes.onrender.com
+      # URL(s) autorizada(s), separadas por comas. Ej:
+      # https://jefatura-quilmes.onrender.com
       - key: CORS_ORIGIN
-        value: "*"
+        sync: false

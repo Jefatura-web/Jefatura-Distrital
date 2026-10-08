@@ -13,6 +13,7 @@ const NIVELES_VALIDOS = [
   'inicial', 'primaria', 'secundaria', 'tecnica', 'agraria',
   'superior', 'especial', 'pcyps', 'dejayam', 'ed-fisica', 'ed-artistica'
 ];
+const MAX_PAGE_SIZE = 100;
 
 function setDatabase(database) {
   db = database;
@@ -23,8 +24,30 @@ function isValidNivel(nivel) {
 }
 
 function isValidMes(mes) {
-  // Se espera YYYY-MM-DD (día 01) o YYYY-MM; en ambos casos validamos año-mes.
-  return /^\d{4}-\d{2}(-\d{2})?$/.test(String(mes || ''));
+  // Se acepta YYYY-MM o YYYY-MM-DD. Además del formato, se verifica que la
+  // fecha exista realmente (por ejemplo, se rechaza 2026-99 o 2026-02-31).
+  const match = String(mes || '').match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = match[3] ? Number(match[3]) : 1;
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day;
+}
+
+function getPagination(query) {
+  const requestedPage = Number.parseInt(query.page, 10);
+  const requestedLimit = Number.parseInt(query.limit, 10);
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const limit = Number.isSafeInteger(requestedLimit) && requestedLimit > 0
+    ? Math.min(requestedLimit, MAX_PAGE_SIZE)
+    : 50;
+
+  return { limit, offset: (page - 1) * limit };
 }
 
 function normalizeMesToFirstDay(mes) {
@@ -205,12 +228,12 @@ function getAllAdmin(req, res) {
     params.push(String(nivel).toLowerCase().trim());
   }
 
-  const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+  const pagination = getPagination({ page, limit });
   const sql = `SELECT id, nivel, grado, mes, titulo, descripcion, inspector_nombre, created_at, updated_at
                FROM actividades_inspectores
                WHERE ${conditions.join(' AND ')}
                ORDER BY created_at DESC
-               LIMIT ${parseInt(limit, 10)} OFFSET ${offset}`;
+               LIMIT ${pagination.limit} OFFSET ${pagination.offset}`;
 
   db.query(sql, params, (err, results) => {
     if (err) {
@@ -407,11 +430,13 @@ function remove(req, res) {
 const router = express.Router();
 
 router.get('/', getAll);                                    // ?nivel=inicial&mes=2026-04
-router.get('/:id', getById);
 router.get('/admin/list', requireAuth, getAllAdmin);         // /admin/list, no /admin (ver nota sobre shadowing en noticiasRoutes.js)
 router.post('/', requireAuth, create);
 router.put('/:id', requireAuth, update);
 router.delete('/:id', requireAuth, remove);
+// La ruta dinámica debe ir después de /admin/list para evitar que "admin" se
+// trate como un ID de actividad.
+router.get('/:id', getById);
 
 module.exports = router;
 module.exports.setDatabase = setDatabase;

@@ -11,7 +11,6 @@ const { requireAuth, timingSafeEqual } = noticiasController;
 router.get('/', noticiasController.getAll);
 router.get('/slug/:slug', noticiasController.getBySlug);
 router.get('/stats', noticiasController.getStats);
-router.get('/:id', noticiasController.getById);
 
 // Verificación rápida del token de administración para el acceso protegido
 router.post('/admin/verify-token', (req, res) => {
@@ -40,5 +39,9 @@ router.get('/admin/:id', requireAuth, noticiasController.getByIdAdmin);
 router.post('/', requireAuth, noticiasController.create);
 router.put('/:id', requireAuth, noticiasController.update);
 router.delete('/:id', requireAuth, noticiasController.remove);
+
+// Mantener la ruta dinámica al final: de otro modo "/admin" se interpreta como
+// un ID de noticia y las rutas administrativas nunca llegan a ejecutarse.
+router.get('/:id', noticiasController.getById);
 
 module.exports = router;

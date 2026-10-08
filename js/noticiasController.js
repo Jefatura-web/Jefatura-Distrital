@@ -10,6 +10,18 @@ let db = null;
 let categoriasCache = null;
 let cacheTimestamp = 0;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+const MAX_PAGE_SIZE = 100;
+
+function getPagination(query) {
+  const requestedPage = Number.parseInt(query.page, 10);
+  const requestedLimit = Number.parseInt(query.limit, 10);
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const limit = Number.isSafeInteger(requestedLimit) && requestedLimit > 0
+    ? Math.min(requestedLimit, MAX_PAGE_SIZE)
+    : 50;
+
+  return { limit, offset: (page - 1) * limit };
+}
 
 function setDatabase(database) {
   db = database;
@@ -231,8 +243,8 @@ function getAll(req, res) {
   sql += ' ORDER BY n.fecha DESC, n.created_at DESC';
 
   // Paginación
-  const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
-  sql += ` LIMIT ${parseInt(limit, 10)} OFFSET ${offset}`;
+  const pagination = getPagination({ page, limit });
+  sql += ` LIMIT ${pagination.limit} OFFSET ${pagination.offset}`;
 
   db.query(sql, params, (err, results) => {
     if (err) {
@@ -352,8 +364,8 @@ function getAllAdmin(req, res) {
 
   sql += ' ORDER BY n.fecha DESC, n.created_at DESC';
 
-  const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
-  sql += ` LIMIT ${parseInt(limit, 10)} OFFSET ${offset}`;
+  const pagination = getPagination({ page, limit });
+  sql += ` LIMIT ${pagination.limit} OFFSET ${pagination.offset}`;
 
   db.query(sql, params, (err, results) => {
     if (err) {

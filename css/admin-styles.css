@@ -32,6 +32,90 @@ body.admin-page{background:var(--bg);font-family:Inter, system-ui, Arial, sans-s
 .pn-meta{margin-top:12px;font-size:12px;color:var(--muted);display:flex;gap:10px}
 .app-alert{position:fixed;right:20px;bottom:20px;z-index:1200}
 @media (max-width:900px){.admin-layout{grid-template-columns:1fr;padding:0 12px}.preview-container{position:relative;top:0}}
+
+.admin-access-gate {
+  min-height: calc(100vh - 80px);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: linear-gradient(180deg, rgba(74, 144, 196, 0.08) 0%, transparent 60%), var(--gris-claro);
+}
+
+.admin-access-card {
+  width: min(100%, 440px);
+  padding: 32px;
+  background: #fff;
+  border: 1px solid var(--borde);
+  border-radius: 16px;
+  box-shadow: 0 8px 28px rgba(13, 33, 84, 0.12);
+}
+
+.admin-access-card h2 {
+  margin: 0 0 10px;
+  color: var(--azul-marino);
+  font-family: 'Playfair Display', serif;
+}
+
+.admin-access-card p {
+  color: var(--gris-texto);
+}
+
+.admin-access-card label {
+  display: block;
+  margin: 20px 0 8px;
+  color: var(--azul-marino);
+  font-weight: 600;
+}
+
+.admin-access-card input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 2px solid var(--borde);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.admin-access-card .btn-submit {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.admin-access-error {
+  min-height: 20px;
+  color: #b91c1c !important;
+  font-size: 14px;
+}
+
+.admin-logout-button {
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 6px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.admin-logout-button:hover,
+.admin-logout-button:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.admin-logout-button[hidden],
+.admin-page[hidden],
+.admin-access-gate[hidden] {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .admin-access-card {
+    padding: 24px;
+  }
+
+  .admin-logout-button {
+    width: 100%;
+  }
+}
 /* ──────────────────────────────────── */
 /* PANEL ADMINISTRATIVO - ESTILOS */
 /* ──────────────────────────────────── */

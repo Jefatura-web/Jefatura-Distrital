@@ -94,23 +94,18 @@ function initNoticiasForm(onSuccess) {
   form.addEventListener('submit', (e) => handleFormSubmit(e, onSuccess));
 }
 
-function resetForm(clearToken = true) {
+function resetForm() {
   const form = getElement('#form-crear-noticia');
   if (!form) return;
   form.reset();
   const inputFecha = getElement('#noticia-fecha');
   if (inputFecha) inputFecha.value = new Date().toISOString().split('T')[0];
-  if (clearToken) {
-    const tokenInput = getElement('#admin-token');
-    if (tokenInput) tokenInput.value = getToken();
-  }
 }
 
 async function handleFormSubmit(event, onSuccess) {
   event.preventDefault();
 
   const form        = getElement('#form-crear-noticia');
-  const tokenInput  = getElement('#admin-token');
   const btnSubmit   = getElement('#form-submit-button');
   if (!form) return;
 
@@ -118,11 +113,10 @@ async function handleFormSubmit(event, onSuccess) {
   const noticiaId = String(formData.get('id') || '').trim();
   const isUpdate  = noticiaId.length > 0;
 
-  const tokenRaw = String(tokenInput?.value || '').trim();
-  const token    = setToken(tokenRaw);
+  const token = getToken();
 
   if (!token) {
-    showAppAlert('Debés ingresar el token de administración.', 'error');
+    showAppAlert('Ingresá el token de seguridad para acceder al panel.', 'error');
     return;
   }
 
@@ -156,7 +150,7 @@ async function handleFormSubmit(event, onSuccess) {
     });
 
     if (result?.ok) {
-      resetForm(false);
+      resetForm();
       const title = getElement('#noticia-form-title');
       if (title) title.textContent = 'Crear nueva noticia';
       showAppAlert(isUpdate ? '✅ Noticia actualizada.' : '✅ Noticia creada.', 'success');
@@ -310,8 +304,6 @@ async function handleEdit(id) {
     renderSinglePreview(noticia.imagen || '');
     getElement('#noticia-destacada').checked = !!noticia.destacada;
     getElement('#noticia-publicada').checked = noticia.publicada === 1 || noticia.publicada === true;
-    getElement('#admin-token').value         = getToken();
-
     const title = getElement('#noticia-form-title');
     if (title) title.textContent = 'Editar noticia';
     const btn = getElement('#form-submit-button');
@@ -353,7 +345,7 @@ function handleDelete(id, card) {
 // ── Cancelar / reset formulario ───────────────────────────────────────────────
 function initCancelButton() {
   getElement('#form-cancel-button')?.addEventListener('click', () => {
-    resetForm(false);
+    resetForm();
     const title = getElement('#noticia-form-title');
     if (title) title.textContent = 'Crear nueva noticia';
     const btn = getElement('#form-submit-button');
@@ -368,6 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Limpia una versión antigua del sitio que pudiera haber dejado un token.
   sessionStorage.removeItem('jefatura_admin_token');
 
+  initAdminAccessGate();
   initLivePreview();
   initCancelButton();
   initNoticiasForm(async () => {
@@ -375,20 +368,70 @@ document.addEventListener('DOMContentLoaded', () => {
     renderNoticiasList();
     await loadAdminNoticias();
   });
-  loadAdminNoticias();
-
   initActividadesForm();
-  loadAdminActividades();
-
-  document.querySelectorAll('#admin-token, #actividad-token').forEach(input => {
-    input.addEventListener('change', () => {
-      setToken(input.value);
-      loadAdminNoticias();
-      loadAdminActividades();
-    });
-  });
   initImageUploads();
 });
+
+function initAdminAccessGate() {
+  const form = getElement('#admin-access-form');
+  const tokenInput = getElement('#admin-access-token');
+  const errorMessage = getElement('#admin-access-error');
+  const submitButton = getElement('#admin-access-submit');
+  const gate = getElement('#admin-access-gate');
+  const panel = getElement('#admin-panel');
+  const status = getElement('.admin-status');
+  const logoutButton = getElement('#admin-logout');
+  if (!form || !tokenInput || !errorMessage || !submitButton || !gate || !panel) return;
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const token = normalizeToken(tokenInput.value);
+    if (!token) return;
+
+    submitButton.disabled = true;
+    submitButton.textContent = 'Verificando…';
+    errorMessage.textContent = '';
+
+    try {
+      const result = await apiFetch('/noticias/admin/verify-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+      if (!result?.ok) throw new Error(result?.error || 'No se pudo verificar el token.');
+
+      setToken(token);
+      tokenInput.value = '';
+      gate.hidden = true;
+      panel.hidden = false;
+      panel.removeAttribute('aria-hidden');
+      if (status) status.textContent = 'Sesión activa';
+      if (logoutButton) logoutButton.hidden = false;
+      await Promise.all([loadAdminNoticias(), loadAdminActividades()]);
+    } catch (error) {
+      handleError(error, 'initAdminAccessGate');
+      errorMessage.textContent = error?.body?.error || error.message || 'No se pudo verificar el token.';
+      tokenInput.select();
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = 'Entrar al panel';
+    }
+  });
+
+  logoutButton?.addEventListener('click', () => {
+    setToken('');
+    panel.hidden = true;
+    panel.setAttribute('aria-hidden', 'true');
+    gate.hidden = false;
+    tokenInput.value = '';
+    errorMessage.textContent = '';
+    if (status) status.textContent = 'Token requerido';
+    if (logoutButton) logoutButton.hidden = true;
+    resetForm();
+    resetActividadForm();
+    tokenInput.focus();
+  });
+}
 
 /* ════════════════════════════════════════════════════════════════════════════
  * ACTIVIDADES DE INSPECTORES (nivel / grado / mes + galería)
@@ -400,8 +443,6 @@ function resetActividadForm() {
   const form = getElement('#form-crear-actividad');
   if (!form) return;
   form.reset();
-  const tokenInput = getElement('#actividad-token');
-  if (tokenInput) tokenInput.value = getToken();
   getElement('#actividad-id').value = '';
   const title = getElement('#actividad-form-title');
   if (title) title.textContent = 'Cargar actividad de inspector';
@@ -419,9 +460,6 @@ function parseImagenes(texto) {
 function initActividadesForm() {
   const form = getElement('#form-crear-actividad');
   if (!form) return;
-
-  const tokenInput = getElement('#actividad-token');
-  if (tokenInput) tokenInput.value = getToken();
 
   form.addEventListener('submit', handleActividadSubmit);
   getElement('#actividad-cancel-button')?.addEventListener('click', () => {
@@ -441,11 +479,10 @@ async function handleActividadSubmit(event) {
   const actividadId = String(formData.get('id') || '').trim();
   const isUpdate = actividadId.length > 0;
 
-  const tokenInput = getElement('#actividad-token');
-  const token = setToken(tokenInput?.value);
+  const token = getToken();
 
   if (!token) {
-    showAppAlert('Debés ingresar el token de administración.', 'error');
+    showAppAlert('Ingresá el token de seguridad para acceder al panel.', 'error');
     return;
   }
 
@@ -574,8 +611,6 @@ function handleActividadEdit(actividad) {
   getElement('#actividad-descripcion').value = actividad.descripcion || '';
   getElement('#actividad-imagenes').value = (actividad.imagenes || []).join('\n');
   renderActivityPreviews();
-  getElement('#actividad-token').value = getToken();
-
   const title = getElement('#actividad-form-title');
   if (title) title.textContent = 'Editar actividad';
   const btn = getElement('#actividad-submit-button');
@@ -688,8 +723,7 @@ async function handleImageSelection(input) {
   const files = Array.from(input.files || []);
   if (files.length === 0) return;
 
-  const tokenSource = input.dataset.mode === 'append' ? '#actividad-token' : '#admin-token';
-  const token = setToken(getElement(tokenSource)?.value);
+  const token = getToken();
   if (!token) {
     showUploadStatus(input, 'Ingresá el token antes de subir fotos.', true);
     input.value = '';

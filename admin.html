@@ -14,10 +14,22 @@
       <a href="/" class="admin-back-link">← Volver a inicio</a>
       <h1 class="admin-title">Panel administrativo</h1>
       <span class="admin-status">Token requerido</span>
+      <button id="admin-logout" class="admin-logout-button" type="button" hidden>Cerrar sesión</button>
     </div>
   </div>
 
-  <main class="admin-page">
+  <main id="admin-access-gate" class="admin-access-gate" aria-labelledby="admin-access-title">
+    <form id="admin-access-form" class="admin-access-card">
+      <h2 id="admin-access-title">Acceso administrativo</h2>
+      <p>Ingresá el token de seguridad para abrir el panel.</p>
+      <label for="admin-access-token">Token de seguridad</label>
+      <input id="admin-access-token" type="password" autocomplete="current-password" required />
+      <p id="admin-access-error" class="admin-access-error" role="alert" aria-live="assertive"></p>
+      <button id="admin-access-submit" class="btn-submit" type="submit">Entrar al panel</button>
+    </form>
+  </main>
+
+  <main id="admin-panel" class="admin-page" hidden aria-hidden="true">
     <div class="admin-layout">
       <!-- FORMULARIO -->
       <section class="admin-form-section">
@@ -28,13 +40,6 @@
 
         <form id="form-crear-noticia" class="admin-form" aria-label="Formulario de creación de noticias">
           <input id="noticia-id" name="id" type="hidden" />
-          <fieldset class="form-fieldset">
-            <legend>Seguridad</legend>
-            <div class="form-group">
-              <label for="admin-token">Token de administración</label>
-              <input id="admin-token" type="password" placeholder="Tu token de acceso" autocomplete="off" required />
-            </div>
-          </fieldset>
 
           <fieldset class="form-fieldset">
             <legend>Información básica</legend>
@@ -153,13 +158,6 @@
 
       <form id="form-crear-actividad" class="admin-form" aria-label="Formulario de actividades de inspectores">
         <input id="actividad-id" name="id" type="hidden" />
-        <fieldset class="form-fieldset">
-          <legend>Seguridad</legend>
-          <div class="form-group">
-            <label for="actividad-token">Token de administración</label>
-            <input id="actividad-token" type="password" placeholder="Tu token de acceso" autocomplete="off" required />
-          </div>
-        </fieldset>
 
         <fieldset class="form-fieldset">
           <legend>Ubicación</legend>

@@ -4,16 +4,27 @@
  * (Fusiona los ex-archivos admin.js, adminActions.js y noticiasForm.js)
  */
 
-import { apiFetch, getElement, sanitize, handleError } from './utils.js';
+import { apiFetch as request, getElement, sanitize, handleError } from './utils.js';
 import { cargarNoticias, renderNoticiasList, showAppAlert } from './news.js';
 import { renderCalendar } from './calendar.js';
 
-// El token vive solamente en memoria mientras esta pestaña está abierta. Nunca
-// se guarda en localStorage, sessionStorage, URLs ni cookies.
-let activeToken = '';
+let adminAuthenticated = false;
 const normalizeToken = value => String(value || '').replace(/^Bearer\s+/i, '').trim();
-const getToken = () => activeToken;
-const setToken = value => { activeToken = normalizeToken(value); return activeToken; };
+const getToken = () => adminAuthenticated;
+const setToken = value => { adminAuthenticated = Boolean(value); return adminAuthenticated; };
+
+async function apiFetch(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  headers.delete('Authorization');
+  try {
+    return await request(path, { ...options, headers, credentials: 'same-origin' });
+  } catch (error) {
+    if (error?.status === 401 && adminAuthenticated) {
+      expireAdminSession('La sesión expiró. Volvé a ingresar el token.');
+    }
+    throw error;
+  }
+}
 
 // ── Preview en vivo ───────────────────────────────────────────────────────────
 function initLivePreview() {
@@ -100,6 +111,15 @@ function resetForm() {
   form.reset();
   const inputFecha = getElement('#noticia-fecha');
   if (inputFecha) inputFecha.value = new Date().toISOString().split('T')[0];
+  const id = getElement('#noticia-id');
+  if (id) id.value = '';
+  const title = getElement('#noticia-form-title');
+  if (title) title.textContent = 'Crear nueva noticia';
+  const button = getElement('#form-submit-button');
+  if (button) button.textContent = 'Crear noticia';
+  renderSinglePreview('');
+  const status = getElement('#upload-noticia-status');
+  if (status) status.textContent = '';
 }
 
 async function handleFormSubmit(event, onSuccess) {
@@ -224,6 +244,11 @@ function setActiveEditCard(card) {
 }
 
 // ── Listado admin ─────────────────────────────────────────────────────────────
+const ADMIN_LIST_PAGE_SIZE = 20;
+let adminNewsPage = 1;
+let adminNewsHasNext = false;
+let adminNewsRecords = [];
+
 function formatNewsCard(noticia) {
   const cat    = sanitize(noticia.categoria || 'General');
   const titulo = sanitize(noticia.titulo    || 'Sin título');
@@ -250,6 +275,26 @@ function formatNewsCard(noticia) {
     </article>`;
 }
 
+function renderAdminNoticias() {
+  const panel = getElement('#admin-noticias-panel');
+  if (!panel) return;
+  const query = (getElement('#admin-news-search')?.value || '').trim().toLocaleLowerCase('es-AR');
+  const filtered = adminNewsRecords.filter(noticia =>
+    [noticia.titulo, noticia.categoria, noticia.texto, noticia.descripcion]
+      .some(value => String(value || '').toLocaleLowerCase('es-AR').includes(query))
+  );
+  panel.innerHTML = filtered.length
+    ? filtered.map(formatNewsCard).join('')
+    : `<div class="admin-empty">${query ? 'No hay coincidencias en esta página.' : 'No hay noticias disponibles.'}</div>`;
+  attachCardEvents();
+  const previous = getElement('#admin-news-prev');
+  const next = getElement('#admin-news-next');
+  const page = getElement('#admin-news-page');
+  if (previous) previous.disabled = adminNewsPage <= 1;
+  if (next) next.disabled = !adminNewsHasNext;
+  if (page) page.textContent = `Página ${adminNewsPage} · ${filtered.length} resultado${filtered.length === 1 ? '' : 's'}`;
+}
+
 async function loadAdminNoticias() {
   const panel = getElement('#admin-noticias-panel');
   if (!panel) return;
@@ -262,16 +307,19 @@ async function loadAdminNoticias() {
   }
 
   try {
-    const noticias = await apiFetch('/noticias/admin?limit=20', {
+    const noticias = await apiFetch(`/noticias/admin?page=${adminNewsPage}&limit=${ADMIN_LIST_PAGE_SIZE + 1}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!Array.isArray(noticias)) throw new Error('Formato de respuesta inválido');
+    if (noticias.length === 0 && adminNewsPage > 1) {
+      adminNewsPage -= 1;
+      await loadAdminNoticias();
+      return;
+    }
 
-    panel.innerHTML = noticias.length === 0
-      ? '<div class="admin-empty">No hay noticias disponibles.</div>'
-      : noticias.map(formatNewsCard).join('');
-
-    attachCardEvents();
+    adminNewsHasNext = noticias.length > ADMIN_LIST_PAGE_SIZE;
+    adminNewsRecords = noticias.slice(0, ADMIN_LIST_PAGE_SIZE);
+    renderAdminNoticias();
   } catch (error) {
     handleError(error, 'loadAdminNoticias');
     panel.innerHTML = '<div class="admin-error">No se pudieron cargar las noticias. Recargá la página.</div>';
@@ -304,6 +352,9 @@ async function handleEdit(id) {
     renderSinglePreview(noticia.imagen || '');
     getElement('#noticia-destacada').checked = !!noticia.destacada;
     getElement('#noticia-publicada').checked = noticia.publicada === 1 || noticia.publicada === true;
+    getElement('#form-crear-noticia').querySelectorAll('input, textarea, select').forEach(field => {
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    });
     const title = getElement('#noticia-form-title');
     if (title) title.textContent = 'Editar noticia';
     const btn = getElement('#form-submit-button');
@@ -334,6 +385,7 @@ function handleDelete(id, card) {
       showAppAlert('Noticia eliminada.', 'success');
       await cargarNoticias();
       renderNoticiasList();
+      await loadAdminNoticias();
     } catch (error) {
       handleError(error, 'handleDelete');
       showAppAlert('No se pudo eliminar la noticia.', 'error');
@@ -358,11 +410,16 @@ function initCancelButton() {
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   // Limpia una versión antigua del sitio que pudiera haber dejado un token.
-  sessionStorage.removeItem('jefatura_admin_token');
+  try {
+    sessionStorage.removeItem('jefatura_admin_token');
+  } catch (error) {
+    handleError(error, 'clearLegacyAdminToken');
+  }
 
   initAdminAccessGate();
   initLivePreview();
   initCancelButton();
+  initAdminListControls();
   initNoticiasForm(async () => {
     await cargarNoticias();
     renderNoticiasList();
@@ -370,7 +427,33 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   initActividadesForm();
   initImageUploads();
+  restoreAdminSession();
 });
+
+function initAdminListControls() {
+  getElement('#admin-news-search')?.addEventListener('input', renderAdminNoticias);
+  getElement('#admin-news-prev')?.addEventListener('click', async () => {
+    if (adminNewsPage <= 1) return;
+    adminNewsPage -= 1;
+    await loadAdminNoticias();
+  });
+  getElement('#admin-news-next')?.addEventListener('click', async () => {
+    if (!adminNewsHasNext) return;
+    adminNewsPage += 1;
+    await loadAdminNoticias();
+  });
+  getElement('#admin-activity-search')?.addEventListener('input', renderAdminActividades);
+  getElement('#admin-activity-prev')?.addEventListener('click', async () => {
+    if (adminActivityPage <= 1) return;
+    adminActivityPage -= 1;
+    await loadAdminActividades();
+  });
+  getElement('#admin-activity-next')?.addEventListener('click', async () => {
+    if (!adminActivityHasNext) return;
+    adminActivityPage += 1;
+    await loadAdminActividades();
+  });
+}
 
 function initAdminAccessGate() {
   const form = getElement('#admin-access-form');
@@ -393,21 +476,17 @@ function initAdminAccessGate() {
     errorMessage.textContent = '';
 
     try {
-      const result = await apiFetch('/noticias/admin/verify-token', {
+      const result = await request('/noticias/admin/verify-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ token })
       });
       if (!result?.ok) throw new Error(result?.error || 'No se pudo verificar el token.');
 
-      setToken(token);
+      setToken(true);
       tokenInput.value = '';
-      gate.hidden = true;
-      panel.hidden = false;
-      panel.removeAttribute('aria-hidden');
-      if (status) status.textContent = 'Sesión activa';
-      if (logoutButton) logoutButton.hidden = false;
-      await Promise.all([loadAdminNoticias(), loadAdminActividades()]);
+      await showAdminPanel({ gate, panel, status, logoutButton });
     } catch (error) {
       handleError(error, 'initAdminAccessGate');
       errorMessage.textContent = error?.body?.error || error.message || 'No se pudo verificar el token.';
@@ -419,18 +498,64 @@ function initAdminAccessGate() {
   });
 
   logoutButton?.addEventListener('click', () => {
-    setToken('');
+    request('/noticias/admin/session', {
+      method: 'DELETE',
+      credentials: 'same-origin'
+    }).catch(error => handleError(error, 'adminLogout'));
+    lockAdminPanel({ gate, panel, status, logoutButton, tokenInput, errorMessage });
+  });
+}
+
+async function restoreAdminSession() {
+  const gate = getElement('#admin-access-gate');
+  const panel = getElement('#admin-panel');
+  const status = getElement('.admin-status');
+  const logoutButton = getElement('#admin-logout');
+  try {
+    const session = await request('/noticias/admin/session', { credentials: 'same-origin' });
+    if (!session?.ok) return;
+    setToken(true);
+    await showAdminPanel({ gate, panel, status, logoutButton });
+  } catch (error) {
+    if (error?.status !== 401) handleError(error, 'restoreAdminSession');
+  }
+}
+
+async function showAdminPanel({ gate, panel, status, logoutButton }) {
+  if (!gate || !panel) return;
+  gate.hidden = true;
+  panel.hidden = false;
+  panel.removeAttribute('aria-hidden');
+  if (status) status.textContent = 'Sesión activa';
+  if (logoutButton) logoutButton.hidden = false;
+  await Promise.all([loadAdminNoticias(), loadAdminActividades()]);
+}
+
+function expireAdminSession(message) {
+  const gate = getElement('#admin-access-gate');
+  const panel = getElement('#admin-panel');
+  const status = getElement('.admin-status');
+  const logoutButton = getElement('#admin-logout');
+  const tokenInput = getElement('#admin-access-token');
+  const errorMessage = getElement('#admin-access-error');
+  lockAdminPanel({ gate, panel, status, logoutButton, tokenInput, errorMessage });
+  if (errorMessage) errorMessage.textContent = message;
+}
+
+function lockAdminPanel({ gate, panel, status, logoutButton, tokenInput, errorMessage }) {
+  setToken(false);
+  if (panel) {
     panel.hidden = true;
     panel.setAttribute('aria-hidden', 'true');
-    gate.hidden = false;
-    tokenInput.value = '';
-    errorMessage.textContent = '';
-    if (status) status.textContent = 'Token requerido';
-    if (logoutButton) logoutButton.hidden = true;
-    resetForm();
-    resetActividadForm();
-    tokenInput.focus();
-  });
+  }
+  if (gate) gate.hidden = false;
+  if (tokenInput) tokenInput.value = '';
+  if (errorMessage) errorMessage.textContent = '';
+  if (status) status.textContent = 'Token requerido';
+  if (logoutButton) logoutButton.hidden = true;
+  resetForm();
+  resetActividadForm();
+  tokenInput?.focus();
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -448,6 +573,9 @@ function resetActividadForm() {
   if (title) title.textContent = 'Cargar actividad de inspector';
   const btn = getElement('#actividad-submit-button');
   if (btn) btn.textContent = 'Crear actividad';
+  renderActivityPreviews();
+  const status = getElement('#upload-actividad-status');
+  if (status) status.textContent = '';
 }
 
 function parseImagenes(texto) {
@@ -466,7 +594,10 @@ function initActividadesForm() {
     resetActividadForm();
     setActiveEditCard(null);
   });
-  getElement('#actividad-filtro-nivel')?.addEventListener('change', loadAdminActividades);
+  getElement('#actividad-filtro-nivel')?.addEventListener('change', () => {
+    adminActivityPage = 1;
+    loadAdminActividades();
+  });
 }
 
 async function handleActividadSubmit(event) {
@@ -533,6 +664,10 @@ async function handleActividadSubmit(event) {
   }
 }
 
+let adminActivityPage = 1;
+let adminActivityHasNext = false;
+let adminActivityRecords = [];
+
 function formatActividadCard(actividad) {
   const nivel = sanitize(actividad.nivel || '');
   const grado = sanitize(actividad.grado || '');
@@ -559,6 +694,26 @@ function formatActividadCard(actividad) {
     </article>`;
 }
 
+function renderAdminActividades() {
+  const panel = getElement('#admin-actividades-panel');
+  if (!panel) return;
+  const query = (getElement('#admin-activity-search')?.value || '').trim().toLocaleLowerCase('es-AR');
+  const filtered = adminActivityRecords.filter(actividad =>
+    [actividad.nivel, actividad.grado, actividad.titulo, actividad.inspector_nombre, actividad.descripcion]
+      .some(value => String(value || '').toLocaleLowerCase('es-AR').includes(query))
+  );
+  panel.innerHTML = filtered.length
+    ? filtered.map(formatActividadCard).join('')
+    : `<div class="admin-empty">${query ? 'No hay coincidencias en esta página.' : 'No hay actividades cargadas.'}</div>`;
+  attachActividadCardEvents(adminActivityRecords);
+  const previous = getElement('#admin-activity-prev');
+  const next = getElement('#admin-activity-next');
+  const page = getElement('#admin-activity-page');
+  if (previous) previous.disabled = adminActivityPage <= 1;
+  if (next) next.disabled = !adminActivityHasNext;
+  if (page) page.textContent = `Página ${adminActivityPage} · ${filtered.length} resultado${filtered.length === 1 ? '' : 's'}`;
+}
+
 async function loadAdminActividades() {
   const panel = getElement('#admin-actividades-panel');
   if (!panel) return;
@@ -573,17 +728,24 @@ async function loadAdminActividades() {
   }
 
   try {
-    const query = nivelFiltro ? `?nivel=${encodeURIComponent(nivelFiltro)}` : '';
-    const actividades = await apiFetch(`/actividades/admin/list${query}`, {
+    const params = new URLSearchParams({
+      page: String(adminActivityPage),
+      limit: String(ADMIN_LIST_PAGE_SIZE + 1)
+    });
+    if (nivelFiltro) params.set('nivel', nivelFiltro);
+    const actividades = await apiFetch(`/actividades/admin/list?${params}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!Array.isArray(actividades)) throw new Error('Formato de respuesta inválido');
+    if (actividades.length === 0 && adminActivityPage > 1) {
+      adminActivityPage -= 1;
+      await loadAdminActividades();
+      return;
+    }
 
-    panel.innerHTML = actividades.length === 0
-      ? '<div class="admin-empty">No hay actividades cargadas.</div>'
-      : actividades.map(formatActividadCard).join('');
-
-    attachActividadCardEvents(actividades);
+    adminActivityHasNext = actividades.length > ADMIN_LIST_PAGE_SIZE;
+    adminActivityRecords = actividades.slice(0, ADMIN_LIST_PAGE_SIZE);
+    renderAdminActividades();
   } catch (error) {
     handleError(error, 'loadAdminActividades');
     panel.innerHTML = '<div class="admin-error">No se pudieron cargar las actividades. Verificá el token.</div>';
@@ -634,6 +796,7 @@ function handleActividadDelete(id, card) {
       card.classList.add('card-removing');
       setTimeout(() => card.remove(), 350);
       showAppAlert('Actividad eliminada.', 'success');
+      await loadAdminActividades();
     } catch (error) {
       handleError(error, 'handleActividadDelete');
       showAppAlert('No se pudo eliminar la actividad.', 'error');
@@ -746,25 +909,27 @@ async function handleImageSelection(input) {
   const target = getElement(`#${input.dataset.target}`);
   if (!target) return;
 
+  let uploadedCount = 0;
   try {
-    const urls = [];
     for (const [index, file] of files.entries()) {
       showUploadStatus(input, `Subiendo ${index + 1} de ${files.length}: ${file.name}`);
-      urls.push(await uploadFile(file, token));
+      const url = await uploadFile(file, token);
+      uploadedCount += 1;
+      if (input.dataset.mode === 'append') {
+        target.value = [...parseImagenes(target.value), url].join('\n');
+        renderActivityPreviews();
+      } else {
+        target.value = url;
+        renderSinglePreview(url);
+      }
     }
-
-    if (input.dataset.mode === 'append') {
-      const existing = parseImagenes(target.value);
-      target.value = [...existing, ...urls].join('\n');
-      renderActivityPreviews();
-    } else {
-      target.value = urls[0];
-      renderSinglePreview(urls[0]);
-    }
-    showUploadStatus(input, `${urls.length} foto${urls.length === 1 ? '' : 's'} subida${urls.length === 1 ? '' : 's'} correctamente.`);
+    showUploadStatus(input, `${uploadedCount} foto${uploadedCount === 1 ? '' : 's'} subida${uploadedCount === 1 ? '' : 's'} correctamente.`);
   } catch (error) {
     handleError(error, 'handleImageSelection');
-    showUploadStatus(input, error?.body?.error || error.message || 'No se pudo subir la foto.', true);
+    const detail = error?.body?.error || error.message || 'No se pudo subir la foto.';
+    showUploadStatus(input, uploadedCount
+      ? `${uploadedCount} foto${uploadedCount === 1 ? '' : 's'} subida${uploadedCount === 1 ? '' : 's'}. ${detail}`
+      : detail, true);
   } finally {
     input.value = '';
   }

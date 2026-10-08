@@ -73,8 +73,13 @@ npm start
 | `DB_PASSWORD` | (vacío o tu pass)   | Contraseña del cluster TiDB                    |
 | `DB_NAME`     | `jefatura_db`       | `jefatura_db`                                  |
 | `ADMIN_TOKEN` | cualquier string    | Token seguro (mín. 20 caracteres aleatorios)   |
+| `CLOUDINARY_CLOUD_NAME` | — | Nombre de nube de Cloudinary |
+| `CLOUDINARY_API_KEY` | — | Clave API de Cloudinary |
+| `CLOUDINARY_API_SECRET` | — | Secreto API de Cloudinary |
 | `CORS_ORIGIN` | `*`                 | URL de Render: `https://jefatura-quilmes.onrender.com` (varias URLs, separadas por comas) |
 | `NODE_ENV`    | `development`       | `production`                                   |
+
+El panel cambia el token por una cookie de sesión `HttpOnly`, `Secure` en producción y `SameSite=Strict`. La sesión vence a las dos horas y se invalida al cerrar sesión o al reiniciarse el servidor. La sesión se guarda en memoria; mantener una sola instancia de servidor mientras se use este almacenamiento. Se permiten cinco intentos fallidos de acceso por IP cada 15 minutos.
 
 ---
 
@@ -109,6 +114,8 @@ Verificar que `.env` está en `.gitignore` (no debe subirse al repo).
    - `CORS_ORIGIN` → la URL que Render asigne (ej: `https://jefatura-quilmes.onrender.com`)
 5. Click en **Deploy**.
 
+Para habilitar las cargas de imágenes, completar también `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` y `CLOUDINARY_API_SECRET` en **Environment**. No incluir sus valores en el repositorio ni en registros compartidos.
+
 El servicio queda disponible en `https://jefatura-quilmes.onrender.com`.
 
 > **Nota sobre el plan gratuito de Render:** los servicios gratuitos se suspenden tras 15 minutos de inactividad. La primera petición tras la suspensión puede tardar ~30 segundos (cold start).
@@ -122,6 +129,33 @@ El servicio queda disponible en `https://jefatura-quilmes.onrender.com`.
 Ir a `https://tu-sitio.onrender.com/admin.html`, ingresar el `ADMIN_TOKEN` y usar el formulario.
 
 ### Opción B — API REST
+
+Las rutas administrativas usan una sesión por cookie; `Authorization: Bearer` no
+autentica estas solicitudes. Para usar la API con `curl`, guardá el token en la
+variable de entorno `ADMIN_TOKEN` y conservá la cookie entre solicitudes:
+
+```bash
+curl --cookie-jar admin-cookies.txt \
+  -X POST https://tu-sitio.onrender.com/noticias/admin/verify-token \
+  -H "Content-Type: application/json" \
+  -d "{\"token\":\"$ADMIN_TOKEN\"}"
+
+curl --cookie admin-cookies.txt \
+  -X POST https://tu-sitio.onrender.com/noticias \
+  -H "Content-Type: application/json" \
+  -d '{
+    "titulo": "Título de la noticia",
+    "texto": "Contenido completo...",
+    "categoria_id": 1,
+    "fecha": "2026-09-08",
+    "destacada": false,
+    "publicada": true
+  }'
+```
+
+El ejemplo siguiente es de la autenticación anterior y ya no funciona con las
+rutas administrativas protegidas. Tratá `admin-cookies.txt` como un secreto;
+no lo subas al repositorio.
 
 ```bash
 curl -X POST https://tu-sitio.onrender.com/noticias \
@@ -157,14 +191,19 @@ curl -X POST https://tu-sitio.onrender.com/noticias \
 | GET    | `/noticias`                   | —    | Listar noticias publicadas     |
 | GET    | `/noticias/:id`               | —    | Obtener noticia por ID         |
 | GET    | `/noticias/slug/:slug`        | —    | Obtener noticia por slug       |
-| POST   | `/noticias/admin/verify-token`| —    | Verificar token admin          |
-| POST   | `/noticias`                   | _    | Crear noticia                  |
-| PUT    | `/noticias/:id`               | _    | Actualizar noticia             |
-| DELETE | `/noticias/:id`               | _    | Eliminar noticia (soft delete) |
+| POST   | `/noticias/admin/verify-token`| Token | Validar token e iniciar sesión |
+| GET    | `/noticias/admin/session`     | Cookie | Consultar sesión administrativa |
+| DELETE | `/noticias/admin/session`     | Cookie | Cerrar sesión administrativa  |
+| POST   | `/noticias`                   | Cookie | Crear noticia                 |
+| PUT    | `/noticias/:id`               | Cookie | Actualizar noticia            |
+| DELETE | `/noticias/:id`               | Cookie | Eliminar noticia (soft delete) |
 
 ---
 
 ## 6. Problemas frecuentes
+
+**Ejecutar pruebas automatizadas**
+: `npm test` ejecuta las pruebas de autenticación, vencimiento de sesión, límite de intentos y validación del formato real de imágenes.
 
 **Error de SSL al conectar a TiDB**
 : Verificar que `NODE_ENV=production` esté seteado en Render. El SSL se activa solo en producción.

@@ -23,7 +23,7 @@
       <h2 id="admin-access-title">Acceso administrativo</h2>
       <p>Ingresá el token de seguridad para abrir el panel.</p>
       <label for="admin-access-token">Token de seguridad</label>
-      <input id="admin-access-token" type="password" autocomplete="current-password" required />
+      <input id="admin-access-token" type="password" autocomplete="current-password" aria-describedby="admin-access-error" required />
       <p id="admin-access-error" class="admin-access-error" role="alert" aria-live="assertive"></p>
       <button id="admin-access-submit" class="btn-submit" type="submit">Entrar al panel</button>
     </form>
@@ -65,9 +65,15 @@
             
             <div class="form-row">
               <div class="form-group">
-                <label for="noticia-categoria">Categoría (ID) *</label>
-                <input id="noticia-categoria" name="categoria_id" type="number" min="1" placeholder="1" required />
-                <small>1=Comunicado, 2=Evento, 3=Noticia, 4=Institucional, 5=Otros</small>
+                <label for="noticia-categoria">Categoría *</label>
+                <select id="noticia-categoria" name="categoria_id" required>
+                  <option value="1">Comunicado</option>
+                  <option value="2">Infraestructura</option>
+                  <option value="3">Recursos Humanos</option>
+                  <option value="4">Pedagógico</option>
+                  <option value="5">Institucional</option>
+                  <option value="6">Cultura</option>
+                </select>
               </div>
               
               <div class="form-group">
@@ -117,8 +123,17 @@
           <h2>Gestionar noticias existentes</h2>
           <p class="form-hint">Editá o eliminá las noticias desde aquí. Solo se muestran las noticias no eliminadas.</p>
         </div>
+        <div class="admin-list-controls">
+          <label for="admin-news-search">Buscar en esta página</label>
+          <input id="admin-news-search" type="search" placeholder="Título, categoría o contenido…" autocomplete="off" />
+        </div>
         <div id="admin-noticias-panel" class="admin-noticias-panel">
           <div class="admin-loading">Cargando noticias administrativas...</div>
+        </div>
+        <div class="admin-pagination">
+          <button id="admin-news-prev" class="btn-secondary" type="button" disabled>← Anteriores</button>
+          <span id="admin-news-page" aria-live="polite">Página 1</span>
+          <button id="admin-news-next" class="btn-secondary" type="button" disabled>Siguientes →</button>
         </div>
       </section>
 
@@ -248,8 +263,17 @@
           <option value="ed-artistica">Educación Artística</option>
         </select>
       </div>
+      <div class="admin-list-controls">
+        <label for="admin-activity-search">Buscar en esta página</label>
+        <input id="admin-activity-search" type="search" placeholder="Título, grado o inspector…" autocomplete="off" />
+      </div>
       <div id="admin-actividades-panel" class="admin-noticias-panel">
         <div class="admin-loading">Cargando actividades…</div>
+      </div>
+      <div class="admin-pagination">
+        <button id="admin-activity-prev" class="btn-secondary" type="button" disabled>← Anteriores</button>
+        <span id="admin-activity-page" aria-live="polite">Página 1</span>
+        <button id="admin-activity-next" class="btn-secondary" type="button" disabled>Siguientes →</button>
       </div>
     </section>
   </main>

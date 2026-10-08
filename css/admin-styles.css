@@ -107,6 +107,66 @@ body.admin-page{background:var(--bg);font-family:Inter, system-ui, Arial, sans-s
   display: none;
 }
 
+.admin-list-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  max-width: 460px;
+  margin: 0 0 16px;
+}
+
+.admin-list-controls label {
+  color: var(--azul-marino);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.admin-list-controls input,
+.admin-form .form-group select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 2px solid var(--borde);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--gris-texto);
+  font: inherit;
+}
+
+.admin-list-controls input:focus-visible,
+.admin-form .form-group select:focus-visible,
+.admin-access-card input:focus-visible,
+.admin-logout-button:focus-visible,
+.admin-pagination button:focus-visible {
+  outline: 3px solid var(--celeste);
+  outline-offset: 2px;
+}
+
+.admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 18px 0 4px;
+  color: var(--gris-texto);
+  font-size: 14px;
+}
+
+.admin-pagination button {
+  min-height: 40px;
+}
+
+.admin-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.upload-status[role="status"] {
+  display: block;
+  min-height: 24px;
+  margin-top: 8px;
+}
+
 @media (max-width: 768px) {
   .admin-access-card {
     padding: 24px;
@@ -114,6 +174,34 @@ body.admin-page{background:var(--bg);font-family:Inter, system-ui, Arial, sans-s
 
   .admin-logout-button {
     width: 100%;
+  }
+
+  .admin-pagination {
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .admin-pagination span {
+    text-align: center;
+  }
+
+  .admin-noticias-panel .admin-news-card {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+
+  .admin-noticias-panel .admin-news-image {
+    width: 76px;
+    height: 76px;
+  }
+
+  .admin-noticias-panel .admin-news-actions {
+    grid-column: 1 / -1;
+    flex-direction: row;
+  }
+
+  .admin-noticias-panel .admin-news-actions button {
+    min-height: 42px;
+    flex: 1;
   }
 }
 /* ──────────────────────────────────── */

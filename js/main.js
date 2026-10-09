@@ -2,7 +2,7 @@
  * Punto de entrada del cliente
  */
 
-import { cargarNoticias, initSearch, showAppAlert, cerrarNoticiaModal } from './news.js';
+import { cargarCategorias, cargarNoticias, initSearch, showAppAlert, cerrarNoticiaModal } from './news.js';
 import { initCalendar } from './calendar.js';
 import { getElement } from './utils.js';
 import { cargarActividadesRecientes } from './actividades.js';
@@ -17,8 +17,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   initInspectorMenu();
   cargarActividadesRecientes();
 
+  const categoriesLoaded = cargarCategorias().catch(() => {
+    showAppAlert('No se pudieron cargar las categorías. Podés seguir viendo las noticias sin filtrar.', 'error');
+  });
+
   try {
-    const noticias = await cargarNoticias();
+    const [noticias] = await Promise.all([cargarNoticias(), categoriesLoaded]);
     initCalendar(noticias);
     console.log(`✅ App lista — ${noticias.length} noticias cargadas`);
   } catch (error) {

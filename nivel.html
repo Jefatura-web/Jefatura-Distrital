@@ -71,9 +71,14 @@
     <div class="nivel-meses" id="nivel-meses" role="tablist" aria-label="Seleccionar mes"></div>
 
     <!-- Grilla de actividades -->
-    <div id="nivel-contenido" aria-live="polite">
+    <div id="nivel-contenido" role="tabpanel" aria-live="polite" aria-busy="true">
       <div class="nivel-loading">Cargando actividades…</div>
     </div>
+    <nav class="activity-pagination" aria-label="Paginación de actividades">
+      <button id="activity-page-prev" type="button" disabled>← Anteriores</button>
+      <span id="activity-page-status" role="status" aria-live="polite"></span>
+      <button id="activity-page-next" type="button" disabled>Siguientes →</button>
+    </nav>
   </div>
 
   <div id="nivel-detalle-modal" aria-hidden="true">

@@ -143,6 +143,14 @@ El servicio queda disponible en `https://jefatura-quilmes.onrender.com`.
 
 > **Nota sobre el plan gratuito de Render:** los servicios gratuitos se suspenden tras 15 minutos de inactividad. La primera petición tras la suspensión puede tardar ~30 segundos (cold start).
 
+### 3.4 Copias de seguridad y restauración
+
+- **Base TiDB:** activá y revisá las copias automáticas y la recuperación a un punto en el tiempo desde TiDB Cloud. Para una restauración importante, recuperá primero en un clúster separado y verificá tablas y registros antes de cambiar la conexión de producción.
+- **Exportación manual:** si se usa un cliente compatible con MySQL, ejecutá `mysqldump` desde una máquina segura y con las credenciales ingresadas de forma interactiva o mediante un archivo protegido fuera del repositorio. Guardá el volcado cifrado y comprobá periódicamente que pueda importarse.
+- **Fotos:** las imágenes viven en Cloudinary; un respaldo de SQL no incluye sus archivos. Conservá el acceso al panel de Cloudinary y exportá o respaldá allí los originales según la política de retención del servicio.
+- **Configuración:** guardá `ADMIN_TOKEN`, credenciales de TiDB y claves de Cloudinary en un gestor de secretos separado. No incluyas `.env`, contraseñas, archivos de respaldo ni claves en GitHub.
+- **Prueba de recuperación:** documentá la fecha, el origen del respaldo y el resultado de la restauración de prueba. No sobrescribas producción hasta validar el entorno recuperado.
+
 ---
 
 ## 4. Publicar noticias
@@ -199,6 +207,10 @@ curl -X POST https://tu-sitio.onrender.com/noticias \
 
 ### Categorías disponibles
 
+Estos son los registros iniciales de `Base Jefatura.sql`. La interfaz obtiene los
+valores vigentes desde `GET /noticias/categorias`; no debe asumir que los IDs
+permanecerán iguales si se editan las categorías en la base.
+
 | ID | Nombre           |
 |----|------------------|
 | 1  | Comunicado       |
@@ -215,6 +227,9 @@ curl -X POST https://tu-sitio.onrender.com/noticias \
 | Método | Ruta                          | Auth | Descripción                    |
 |--------|-------------------------------|------|--------------------------------|
 | GET    | `/noticias`                   | —    | Listar noticias publicadas     |
+| GET    | `/noticias?paginated=true&page=1&limit=12` | — | Listado paginado; admite `search` y `categoria_id` |
+| GET    | `/noticias/categorias`         | —    | Categorías con icono, color y descripción |
+| GET    | `/noticias/calendario?mes=YYYY-MM` | — | Noticias publicadas de un mes |
 | GET    | `/noticias/:id`               | —    | Obtener noticia por ID         |
 | GET    | `/noticias/slug/:slug`        | —    | Obtener noticia por slug       |
 | POST   | `/noticias/admin/verify-token`| Token | Validar token e iniciar sesión |
@@ -227,6 +242,8 @@ curl -X POST https://tu-sitio.onrender.com/noticias \
 | POST   | `/noticias/admin/:id/restore` | Cookie | Restaurar noticia dentro de 48 h |
 | GET    | `/actividades/admin/deleted`  | Cookie | Ver papelera de actividades (48 h) |
 | POST   | `/actividades/admin/:id/restore` | Cookie | Restaurar actividad dentro de 48 h |
+| GET    | `/actividades/pagina?page=1&limit=24&nivel=inicial` | — | Actividades paginadas con filtros |
+| GET    | `/actividades/filtros?nivel=inicial` | — | Años, inspectores y meses disponibles |
 | GET    | `/noticia/:slug`              | — | Noticia completa con metadatos SEO |
 | GET    | `/sitemap.xml`                | — | Sitemap dinámico de noticias publicadas |
 

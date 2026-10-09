@@ -15,12 +15,14 @@ const MAX_PAGE_SIZE = 100;
 function getPagination(query) {
   const requestedPage = Number.parseInt(query.page, 10);
   const requestedLimit = Number.parseInt(query.limit, 10);
-  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0
+    ? Math.min(requestedPage, 100000)
+    : 1;
   const limit = Number.isSafeInteger(requestedLimit) && requestedLimit > 0
     ? Math.min(requestedLimit, MAX_PAGE_SIZE)
     : 50;
 
-  return { limit, offset: (page - 1) * limit };
+  return { page, limit, offset: (page - 1) * limit };
 }
 
 function setDatabase(database) {
@@ -147,7 +149,7 @@ function absoluteImageUrl(value, siteUrl) {
 
 function getDescription(noticia) {
   const description = String(noticia.descripcion || noticia.texto || '').replace(/\s+/g, ' ').trim();
-  return description.substring(0, 300);
+  return description.length > 180 ? `${description.substring(0, 177).trimEnd()}…` : description;
 }
 
 function renderArticlePage(noticia, images, canonicalUrl, siteName = 'Jefatura Distrital Quilmes') {
@@ -181,7 +183,17 @@ function renderArticlePage(noticia, images, canonicalUrl, siteName = 'Jefatura D
     dateModified: String(noticia.updated_at || noticia.fecha || '').substring(0, 10),
     mainEntityOfPage: canonicalUrl,
     image: imageUrls,
-    publisher: { '@type': 'Organization', name: siteName }
+    inLanguage: 'es-AR',
+    articleSection: String(noticia.categoria || 'Noticias'),
+    author: { '@type': 'Organization', name: siteName },
+    publisher: {
+      '@type': 'Organization',
+      name: siteName,
+      logo: {
+        '@type': 'ImageObject',
+        url: `${siteOrigin}/logo_jefatura.jpg`
+      }
+    }
   }).replace(/</g, '\\u003c');
 
   return `<!doctype html>
@@ -194,14 +206,18 @@ function renderArticlePage(noticia, images, canonicalUrl, siteName = 'Jefatura D
   <link rel="canonical" href="${safeCanonicalUrl}">
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="${safeSiteName}">
+  <meta property="og:locale" content="es_AR">
   <meta property="og:title" content="${title}">
   <meta property="og:description" content="${description}">
   <meta property="og:url" content="${safeCanonicalUrl}">
-  ${cover ? `<meta property="og:image" content="${escapeHtml(cover)}">` : ''}
+  <meta property="article:published_time" content="${escapeHtml(date)}">
+  <meta property="article:modified_time" content="${escapeHtml(String(noticia.updated_at || noticia.fecha || '').substring(0, 10))}">
+  <meta property="article:section" content="${escapeHtml(noticia.categoria || 'Noticias')}">
+  ${cover ? `<meta property="og:image" content="${escapeHtml(cover)}">\n  <meta property="og:image:alt" content="${title}">` : ''}
   <meta name="twitter:card" content="${cover ? 'summary_large_image' : 'summary'}">
   <meta name="twitter:title" content="${title}">
   <meta name="twitter:description" content="${description}">
-  ${cover ? `<meta name="twitter:image" content="${escapeHtml(cover)}">` : ''}
+  ${cover ? `<meta name="twitter:image" content="${escapeHtml(cover)}">\n  <meta name="twitter:image:alt" content="${title}">` : ''}
   <script type="application/ld+json">${structuredData}</script>
   <link rel="stylesheet" href="/css/estilo.css">
 </head>
@@ -307,11 +323,14 @@ function getAll(req, res) {
     fecha,
     destacada,
     categoria,
+    categoria_id,
     publicada,
     search,
+    paginated,
     page = 1,
     limit = 50
   } = req.query;
+  const usePagination = String(paginated || '').toLowerCase() === 'true';
 
   const conditions = [];
   const params = [];
@@ -332,6 +351,15 @@ function getAll(req, res) {
     params.push(`%${categoria}%`);
   }
 
+  if (categoria_id !== undefined) {
+    const categoryId = Number.parseInt(categoria_id, 10);
+    if (!Number.isSafeInteger(categoryId) || categoryId < 1) {
+      return res.status(400).json({ error: "Parámetro 'categoria_id' inválido." });
+    }
+    conditions.push('n.categoria_id = ?');
+    params.push(categoryId);
+  }
+
   if (typeof publicada !== 'undefined') {
     const value = ['1', 'true', 'yes'].includes(String(publicada).toLowerCase()) ? 1 : 0;
     conditions.push('n.publicada = ?');
@@ -350,6 +378,7 @@ function getAll(req, res) {
   // Solo noticias no eliminadas (soft delete)
   conditions.push('n.deleted_at IS NULL');
 
+  const pagination = usePagination ? getPagination({ page, limit }) : null;
   let sql = `SELECT
       n.id,
       n.titulo,
@@ -363,7 +392,9 @@ function getAll(req, res) {
       n.created_at,
       n.updated_at,
       c.nombre AS categoria,
-      c.icono AS categoria_icono
+      c.icono AS categoria_icono,
+      c.color AS categoria_color,
+      n.categoria_id
     FROM noticias n
     LEFT JOIN categorias c ON n.categoria_id = c.id`;
 
@@ -371,11 +402,11 @@ function getAll(req, res) {
     sql += ` WHERE ${conditions.join(' AND ')}`;
   }
 
-  sql += ' ORDER BY n.fecha DESC, n.created_at DESC';
+  sql += ' ORDER BY n.destacada DESC, n.fecha DESC, n.created_at DESC, n.id DESC';
 
-  // Paginación
-  const pagination = getPagination({ page, limit });
-  sql += ` LIMIT ${pagination.limit} OFFSET ${pagination.offset}`;
+  if (pagination) {
+    sql += ` LIMIT ${pagination.limit} OFFSET ${pagination.offset}`;
+  }
 
   db.query(sql, params, (err, results) => {
     if (err) {
@@ -385,14 +416,88 @@ function getAll(req, res) {
         details: process.env.NODE_ENV === 'development' ? err.message : undefined
       });
     }
-    attachImagenes(results || [], (imageErr, noticias) => {
+    const respondWithNoticias = (rows, total) => attachImagenes(rows || [], (imageErr, noticias) => {
       if (imageErr) {
         console.error('[DB Error] getAll.attachImagenes:', imageErr);
         return res.status(500).json({ error: 'Error al obtener imágenes de noticias' });
       }
-      res.json(noticias || []);
+      if (!pagination) return res.json(noticias || []);
+      const totalPages = Math.ceil(total / pagination.limit);
+      res.json({
+        data: noticias || [],
+        pagination: {
+          page: Math.min(pagination.page, Math.max(totalPages, 1)),
+          limit: pagination.limit,
+          total,
+          totalPages,
+          hasNext: pagination.page < totalPages
+        }
+      });
     });
+
+    if (!pagination) return respondWithNoticias(results, 0);
+    const whereSql = conditions.join(' AND ');
+    db.query(
+      `SELECT COUNT(*) AS total FROM noticias n LEFT JOIN categorias c ON n.categoria_id = c.id WHERE ${whereSql}`,
+      params,
+      (countErr, countRows) => {
+        if (countErr) {
+          console.error('[DB Error] getAll.count:', countErr);
+          return res.status(500).json({ error: 'Error al contar noticias' });
+        }
+        const total = Number(countRows?.[0]?.total || 0);
+        const totalPages = Math.ceil(total / pagination.limit);
+        const effectivePage = Math.min(pagination.page, Math.max(totalPages, 1));
+        if (effectivePage === pagination.page) return respondWithNoticias(results, total);
+
+        const correctedSql = sql.replace(/LIMIT \d+ OFFSET \d+$/, `LIMIT ${pagination.limit} OFFSET ${(effectivePage - 1) * pagination.limit}`);
+        db.query(correctedSql, params, (pageErr, pageResults) => {
+          if (pageErr) {
+            console.error('[DB Error] getAll.correctedPage:', pageErr);
+            return res.status(500).json({ error: 'Error al cargar la página de noticias' });
+          }
+          respondWithNoticias(pageResults || [], total);
+        });
+      }
+    );
   });
+}
+
+function getCategorias(req, res) {
+  if (!db) return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  db.query(
+    'SELECT id, nombre, descripcion, icono, color FROM categorias ORDER BY nombre',
+    (err, rows) => {
+      if (err) {
+        console.error('[DB Error] getCategorias:', err);
+        return res.status(500).json({ error: 'No se pudieron cargar las categorías' });
+      }
+      res.json(rows || []);
+    }
+  );
+}
+
+function getCalendar(req, res) {
+  if (!db) return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  const month = String(req.query.mes || '');
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    return res.status(400).json({ error: "Parámetro 'mes' inválido. Formato esperado: YYYY-MM" });
+  }
+  db.query(
+    `SELECT id, titulo, descripcion, texto, fecha
+     FROM noticias
+     WHERE deleted_at IS NULL AND publicada = 1
+       AND fecha >= ? AND fecha < DATE_ADD(?, INTERVAL 1 MONTH)
+     ORDER BY fecha DESC, created_at DESC`,
+    [`${month}-01`, `${month}-01`],
+    (err, rows) => {
+      if (err) {
+        console.error('[DB Error] getCalendar:', err);
+        return res.status(500).json({ error: 'No se pudieron cargar las noticias del calendario' });
+      }
+      res.json(rows || []);
+    }
+  );
 }
 
 function getById(req, res) {
@@ -498,6 +603,7 @@ function getAllAdmin(req, res) {
       n.updated_at,
       c.nombre AS categoria,
       c.icono AS categoria_icono,
+      c.color AS categoria_color,
       n.categoria_id
     FROM noticias n
     LEFT JOIN categorias c ON n.categoria_id = c.id`;
@@ -506,7 +612,7 @@ function getAllAdmin(req, res) {
     sql += ` WHERE ${conditions.join(' AND ')}`;
   }
 
-  sql += ' ORDER BY n.fecha DESC, n.created_at DESC';
+  sql += ' ORDER BY n.fecha DESC, n.created_at DESC, n.id DESC';
 
   const pagination = getPagination({ page, limit });
   sql += ` LIMIT ${pagination.limit} OFFSET ${pagination.offset}`;
@@ -1123,6 +1229,8 @@ module.exports = {
   requireAuth,
   timingSafeEqual,
   getAll,
+  getCategorias,
+  getCalendar,
   getAllAdmin,
   getById,
   getByIdAdmin,

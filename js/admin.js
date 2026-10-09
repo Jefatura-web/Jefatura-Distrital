@@ -5,7 +5,7 @@
  */
 
 import { apiFetch as request, getElement, sanitize, handleError } from './utils.js';
-import { cargarNoticias, renderNoticiasList, showAppAlert } from './news.js';
+import { cargarCategorias, cargarNoticias, renderNoticiasList, showAppAlert } from './news.js';
 import { renderCalendar } from './calendar.js';
 
 let adminAuthenticated = false;
@@ -32,15 +32,6 @@ function initLivePreview() {
   const previewCard = getElement('#preview-card');
   if (!form || !previewCard) return;
 
-  const CATEGORIAS = {
-    1: { nombre: 'Comunicado',      color: 'azul'    },
-    2: { nombre: 'Infraestructura', color: 'dorado'  },
-    3: { nombre: 'Recursos Humanos',color: 'verde'   },
-    4: { nombre: 'Pedagógico',      color: 'violeta' },
-    5: { nombre: 'Institucional',   color: 'azul'    },
-    6: { nombre: 'Cultura',         color: 'dorado'  }
-  };
-
   const escHtml = (text) => {
     const div = document.createElement('div');
     div.textContent = text || '';
@@ -57,12 +48,18 @@ function initLivePreview() {
     const descripcion = form.querySelector('#noticia-descripcion')?.value.trim() || '';
     const texto       = form.querySelector('#noticia-texto')?.value.trim()     || '';
     const fecha       = form.querySelector('#noticia-fecha')?.value            || '';
-    const catId       = parseInt(form.querySelector('#noticia-categoria')?.value || '1', 10);
+    const categoryOption = form.querySelector('#noticia-categoria')?.selectedOptions[0];
     const destacada   = !!form.querySelector('#noticia-destacada')?.checked;
     const publicada   = !!form.querySelector('#noticia-publicada')?.checked;
     const imagenUrl   = form.querySelector('#noticia-imagen')?.value.split(/\r?\n/).map(url => url.trim()).filter(Boolean)[0] || '';
 
-    const cat       = CATEGORIAS[catId] || { nombre: 'Sin categoría', color: 'azul' };
+    const cat = {
+      nombre: categoryOption?.dataset.nombre || 'Sin categoría',
+      icono: categoryOption?.dataset.icono || '📰',
+      color: /^#[\da-f]{6}$/i.test(categoryOption?.dataset.color || '')
+        ? categoryOption.dataset.color
+        : '#1a3a7a'
+    };
     const estado    = !publicada ? 'Borrador' : (destacada ? '📌 Destacada' : '✅ Publicada');
     const estStyle  = !publicada
       ? 'background:#fef3c7;color:#92400e'
@@ -73,9 +70,9 @@ function initLivePreview() {
       : '<div class="pn-imagen-placeholder">🖼️</div>';
 
     previewCard.innerHTML = `
-      <div class="pn-imagen ${cat.color}">${imagenHtml}</div>
+      <div class="pn-imagen" style="--category-color:${cat.color}">${imagenHtml}</div>
       <div class="pn-body">
-        <div class="pn-categoria">${escHtml(cat.nombre)}</div>
+        <div class="pn-categoria" style="--category-color:${cat.color}">${escHtml(cat.icono)} ${escHtml(cat.nombre)}</div>
         <h3 class="pn-titulo">${escHtml(titulo)}</h3>
         ${descripcion ? `<p class="pn-descripcion">${escHtml(descripcion)}</p>` : '<p class="pn-descripcion">La descripción breve también...</p>'}
         <p class="pn-texto-preview">${escHtml(preview)}</p>
@@ -210,7 +207,13 @@ function showInlineConfirm(card, onConfirm, onCancel) {
   if (!actionsEl) return;
   if (_origActions.has(card)) return; // ya en confirmación
 
-  _origActions.set(card, actionsEl.innerHTML);
+  const deleteButton = actionsEl.querySelector('.admin-delete-btn, .actividad-delete-btn');
+  _origActions.set(card, {
+    html: actionsEl.innerHTML,
+    returnFocusClass: deleteButton?.classList.contains('actividad-delete-btn')
+      ? 'actividad-delete-btn'
+      : 'admin-delete-btn'
+  });
   card.classList.add('card-confirming');
 
   actionsEl.innerHTML = `
@@ -223,18 +226,27 @@ function showInlineConfirm(card, onConfirm, onCancel) {
     onConfirm();
   });
   actionsEl.querySelector('.confirm-no').addEventListener('click', () => {
-    cancelInlineConfirm(card);
     if (typeof onCancel === 'function') onCancel();
+  });
+  actionsEl.querySelector('.confirm-yes').focus();
+  actionsEl.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (typeof onCancel === 'function') onCancel();
+    }
   });
 }
 
 function cancelInlineConfirm(card) {
   const actionsEl = card.querySelector('.admin-news-actions');
-  const orig = _origActions.get(card);
-  if (!actionsEl || !orig) return;
-  actionsEl.innerHTML = orig;
+  const previous = _origActions.get(card);
+  if (!actionsEl || !previous) return;
+  actionsEl.innerHTML = previous.html;
   _origActions.delete(card);
   card.classList.remove('card-confirming');
+  if (card.querySelector('.actividad-delete-btn')) bindActivityCardEvents(card);
+  else bindNewsCardEvents(card);
+  actionsEl.querySelector(`.${previous.returnFocusClass}`)?.focus();
 }
 
 /** Marca la tarjeta que está siendo editada y limpia cualquier otra. */
@@ -332,10 +344,14 @@ async function loadAdminNoticias() {
 
 function attachCardEvents() {
   document.querySelectorAll('.admin-news-card').forEach(card => {
-    const id = card.dataset.id;
-    card.querySelector('.admin-edit-btn')?.addEventListener('click',   () => handleEdit(id));
-    card.querySelector('.admin-delete-btn')?.addEventListener('click', () => handleDelete(id, card));
+    bindNewsCardEvents(card);
   });
+}
+
+function bindNewsCardEvents(card) {
+  const id = card.dataset.id;
+  card.querySelector('.admin-edit-btn')?.addEventListener('click', () => handleEdit(id));
+  card.querySelector('.admin-delete-btn')?.addEventListener('click', () => handleDelete(id, card));
 }
 
 async function handleEdit(id) {
@@ -378,7 +394,11 @@ function handleDelete(id, card) {
   if (!id || !card) return;
   showInlineConfirm(card, async () => {
     const token = getToken();
-    if (!token) { showAppAlert('No hay token válido. Ingresá el token primero.', 'error'); return; }
+    if (!token) {
+      showAppAlert('No hay token válido. Ingresá el token primero.', 'error');
+      cancelInlineConfirm(card);
+      return;
+    }
     try {
       await apiFetch(`/noticias/${id}`, {
         method: 'DELETE',
@@ -679,7 +699,13 @@ async function showAdminPanel({ gate, panel, status, logoutButton }) {
   panel.removeAttribute('aria-hidden');
   if (status) status.textContent = 'Sesión activa';
   if (logoutButton) logoutButton.hidden = false;
-  await Promise.all([loadAdminNoticias(), loadAdminActividades()]);
+  await Promise.all([
+    cargarCategorias().catch(error => {
+      showAppAlert('No se pudieron cargar las categorías. Revisá la conexión antes de crear una noticia.', 'error');
+    }),
+    loadAdminNoticias(),
+    loadAdminActividades()
+  ]);
 }
 
 function expireAdminSession(message) {
@@ -926,11 +952,15 @@ async function loadAdminActividades() {
 
 function attachActividadCardEvents(actividades) {
   document.querySelectorAll('#admin-actividades-panel .admin-news-card').forEach(card => {
-    const id = card.dataset.id;
-    const actividad = actividades.find(a => String(a.id) === id);
-    card.querySelector('.actividad-edit-btn')?.addEventListener('click', () => handleActividadEdit(actividad));
-    card.querySelector('.actividad-delete-btn')?.addEventListener('click', () => handleActividadDelete(id, card));
+    bindActivityCardEvents(card, actividades);
   });
+}
+
+function bindActivityCardEvents(card, actividades = adminActivityRecords) {
+  const id = card.dataset.id;
+  const actividad = actividades.find(item => String(item.id) === id);
+  card.querySelector('.actividad-edit-btn')?.addEventListener('click', () => handleActividadEdit(actividad));
+  card.querySelector('.actividad-delete-btn')?.addEventListener('click', () => handleActividadDelete(id, card));
 }
 
 function handleActividadEdit(actividad) {
@@ -960,7 +990,11 @@ function handleActividadDelete(id, card) {
   if (!id || !card) return;
   showInlineConfirm(card, async () => {
     const token = getToken();
-    if (!token) { showAppAlert('No hay token válido. Ingresá el token primero.', 'error'); return; }
+    if (!token) {
+      showAppAlert('No hay token válido. Ingresá el token primero.', 'error');
+      cancelInlineConfirm(card);
+      return;
+    }
     try {
       await apiFetch(`/actividades/${id}`, {
         method: 'DELETE',

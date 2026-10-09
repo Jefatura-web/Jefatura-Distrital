@@ -31,21 +31,22 @@ const state = {
   mesActivo:    null,
   anioActivo:   '',
   filtroActivo: '',
-  inspectorActivo: ''
+  inspectorActivo: '',
+  pagina: 1,
+  paginacion: { total: 0, totalPages: 0, hasNext: false },
+  filtros: null,
+  meses: []
 };
 let filtersBound = false;
 let openedDeepLinkId = '';
+let activityRequestId = 0;
+const ACTIVITY_PAGE_SIZE = 24;
 
 // ── Helpers de fecha ──────────────────────────────────────────────────────────
 const mesKey   = f  => String(f || '').substring(0, 7);
 const mesLabel = k  => { const [a,m] = k.split('-').map(Number); return (a && m) ? `${MESES_FULL[m-1]} ${a}` : k; };
 const mesCorto = k  => { const m = parseInt(k.split('-')[1], 10); return MESES_CORTO[m-1] || k; };
-const getActivitiesForSelectedYear = () => state.anioActivo
-  ? state.actividades.filter(activity => mesKey(activity.mes).startsWith(`${state.anioActivo}-`))
-  : state.actividades;
-const getMesesDisponibles = () => [...new Set(
-  getActivitiesForSelectedYear().map(activity => mesKey(activity.mes))
-)].sort().reverse();
+const getMesesDisponibles = () => state.meses.map(item => item.month);
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 export async function initNivelPage() {
@@ -70,72 +71,111 @@ export async function initNivelPage() {
   document.title = `${info?.nombre || 'Actividades de Inspectores'} | Jefatura Distrital Quilmes`;
   const levelSelect = getElement('#nivel-filtro-nivel');
   if (levelSelect) levelSelect.value = nivel;
-  state.anioActivo = params.get('anio') || '';
+  const requestedYear = params.get('anio') || '';
+  state.anioActivo = /^\d{4}$/.test(requestedYear) ? requestedYear : '';
   state.filtroActivo = normalizarTexto(params.get('q') || '');
   state.inspectorActivo = params.get('inspector') || '';
+  const requestedMonth = params.get('mes') || '';
+  state.mesActivo = /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth) ? requestedMonth : null;
+  if (state.mesActivo) state.anioActivo = state.mesActivo.substring(0, 4);
   const searchInput = getElement('#nivel-filtro');
   if (searchInput) searchInput.value = params.get('q') || '';
+  const inspectorSelect = getElement('#nivel-filtro-inspector');
+  if (inspectorSelect) inspectorSelect.value = state.inspectorActivo;
+  const yearSelect = getElement('#nivel-filtro-anio');
+  if (yearSelect) yearSelect.value = state.anioActivo;
 
   bindFilters();
-  await cargarActividades();
+  await cargarActividades(true, true);
 }
 
-async function cargarActividades() {
+async function cargarActividades(refreshFilters = false, initialize = false) {
+  const requestId = ++activityRequestId;
   const contenedor = getElement('#nivel-contenido');
   const resumen    = getElement('#nivel-resumen');
   const tabs       = getElement('#nivel-meses');
 
-  if (contenedor) contenedor.innerHTML = '<div class="nivel-loading" role="status">Cargando actividades…</div>';
-  if (resumen)    resumen.innerHTML    = '';
-  if (tabs)       tabs.innerHTML       = '';
+  if (contenedor) {
+    contenedor.setAttribute('aria-busy', 'true');
+    contenedor.innerHTML = '<div class="nivel-loading" role="status">Cargando actividades…</div>';
+  }
 
   try {
-    const apiParams = new URLSearchParams();
-    if (state.nivel !== 'todos') apiParams.set('nivel', state.nivel);
-    const data = await apiFetch(`/actividades${apiParams.size ? `?${apiParams}` : ''}`);
-    if (!Array.isArray(data)) throw new Error('La API devolvió un formato de actividades inesperado');
-    state.actividades = data;
-
-    if (state.actividades.length === 0) {
-      state.mesActivo = null;
+    if (refreshFilters || !state.filtros) {
+      const facetParams = new URLSearchParams();
+      if (state.nivel !== 'todos') facetParams.set('nivel', state.nivel);
+      if (state.anioActivo) facetParams.set('anio', state.anioActivo);
+      const filters = await apiFetch(`/actividades/filtros${facetParams.size ? `?${facetParams}` : ''}`);
+      if (requestId !== activityRequestId) return;
+      state.filtros = filters;
+      if (!Array.isArray(state.filtros?.years) || !Array.isArray(state.filtros?.inspectors) ||
+          !Array.isArray(state.filtros?.months)) {
+        throw new Error('La API devolvió opciones de filtro con un formato inesperado');
+      }
+      state.meses = state.filtros.months;
+      if (state.anioActivo && !state.filtros.years.includes(state.anioActivo)) {
+        state.anioActivo = '';
+        state.mesActivo = null;
+        return cargarActividades(true, initialize);
+      }
+      if (initialize && !state.mesActivo && !state.anioActivo &&
+          !new URLSearchParams(window.location.search).has('actividad') && state.nivel !== 'todos') {
+            const latestMonth = state.filtros.months[0]?.month;
+        if (latestMonth) {
+          state.anioActivo = latestMonth.substring(0, 4);
+          state.mesActivo = latestMonth;
+          return cargarActividades(true, false);
+        }
+      }
       renderInspectorOptions();
       renderYearOptions();
       renderResumenAnual();
-      renderTabsMes([]);
-      renderGrillaGrados();
-      return;
+      renderTabsMes(getMesesDisponibles());
     }
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const requestedMonth = urlParams.get('mes');
-    const allMonths = new Set(state.actividades.map(activity => mesKey(activity.mes)));
-    state.mesActivo = requestedMonth && allMonths.has(requestedMonth) &&
-      (!state.anioActivo || requestedMonth.startsWith(`${state.anioActivo}-`))
-      ? requestedMonth
-      : null;
-
-    renderInspectorOptions();
-    renderYearOptions();
-    if (state.mesActivo === null && state.nivel !== 'todos' && !urlParams.has('actividad') && !state.anioActivo) {
-      state.mesActivo = getMesesDisponibles()[0] || null;
+    const apiParams = new URLSearchParams({
+      page: String(state.pagina),
+      limit: String(ACTIVITY_PAGE_SIZE)
+    });
+    if (state.nivel !== 'todos') apiParams.set('nivel', state.nivel);
+    if (state.anioActivo) apiParams.set('anio', state.anioActivo);
+    if (state.mesActivo) apiParams.set('mes', state.mesActivo);
+    if (state.inspectorActivo) apiParams.set('inspector', state.inspectorActivo);
+    if (state.filtroActivo) apiParams.set('search', getElement('#nivel-filtro')?.value.trim() || '');
+    const response = await apiFetch(`/actividades/pagina?${apiParams}`);
+    if (requestId !== activityRequestId) return;
+    if (!Array.isArray(response?.data) || !response?.pagination) {
+      throw new Error('La API devolvió un formato de actividades paginadas inesperado');
     }
-    renderResumenAnual();
-    renderTabsMes(getMesesDisponibles());
+    state.actividades = response.data;
+    state.paginacion = response.pagination;
+    state.pagina = response.pagination.page;
     renderGrillaGrados();
-    const linkedId = urlParams.get('actividad') || '';
+    const linkedId = new URLSearchParams(window.location.search).get('actividad') || '';
     if (linkedId && linkedId !== openedDeepLinkId) {
-      const linkedActivity = state.actividades.find(activity => String(activity.id) === linkedId);
+      let linkedActivity = state.actividades.find(activity => String(activity.id) === linkedId);
+      if (!linkedActivity) {
+        try {
+          linkedActivity = await apiFetch(`/actividades/${encodeURIComponent(linkedId)}`);
+        } catch (error) {
+          if (error?.status !== 404) throw error;
+        }
+      }
+      if (requestId !== activityRequestId) return;
       if (linkedActivity && activityMatchesCurrentFilters(linkedActivity)) {
         openedDeepLinkId = linkedId;
         mostrarDetalle(linkedActivity);
       }
     }
   } catch (err) {
+    if (requestId !== activityRequestId) return;
     handleError(err, 'cargarActividades');
     if (contenedor) {
       contenedor.innerHTML = '<div class="nivel-error" role="alert">No se pudieron cargar las actividades. Revisá tu conexión e intentá nuevamente. <button type="button" id="nivel-reintentar">Reintentar</button></div>';
-      getElement('#nivel-reintentar')?.addEventListener('click', cargarActividades);
+      getElement('#nivel-reintentar')?.addEventListener('click', () => cargarActividades(true));
     }
+  } finally {
+    if (requestId === activityRequestId && contenedor) contenedor.removeAttribute('aria-busy');
   }
 }
 
@@ -143,10 +183,7 @@ function renderInspectorOptions() {
   const select = getElement('#nivel-filtro-inspector');
   if (!select) return;
 
-  const inspectors = [...new Set(state.actividades
-    .map(activity => String(activity.inspector_nombre || '').trim())
-    .filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b, 'es'));
+  const inspectors = state.filtros?.inspectors || [];
   const current = state.inspectorActivo;
   select.innerHTML = '<option value="">Todos los inspectores</option>' +
     inspectors.map(name => `<option value="${sanitize(name)}">${sanitize(name)}</option>`).join('');
@@ -157,9 +194,7 @@ function renderInspectorOptions() {
 function renderYearOptions() {
   const select = getElement('#nivel-filtro-anio');
   if (!select) return;
-  const years = [...new Set(state.actividades.map(activity => mesKey(activity.mes).substring(0, 4)))]
-    .filter(year => /^\d{4}$/.test(year))
-    .sort((a, b) => b.localeCompare(a));
+  const years = state.filtros?.years || [];
   select.innerHTML = '<option value="">Todos los años</option>' +
     years.map(year => `<option value="${year}">${year}</option>`).join('');
   if (years.includes(state.anioActivo)) select.value = state.anioActivo;
@@ -169,25 +204,22 @@ function renderYearOptions() {
 // ── Resumen anual ─────────────────────────────────────────────────────────────
 function renderResumenAnual() {
   const resumen = getElement('#nivel-resumen');
-  if (!resumen || state.actividades.length === 0) return;
+  if (!resumen || !state.meses.length) {
+    if (resumen) resumen.replaceChildren();
+    return;
+  }
 
-  const yearActivities = getActivitiesForSelectedYear();
-  const porMes = {};
-  yearActivities.forEach(a => { const k = mesKey(a.mes); porMes[k] = (porMes[k] || 0) + 1; });
-
-  const meses    = [...new Set(yearActivities.map(a => mesKey(a.mes)))].sort();
-  const maxCount = Math.max(...Object.values(porMes), 1);
+  const maxCount = Math.max(...state.meses.map(item => item.total), 1);
 
   resumen.innerHTML = `
     <div class="resumen-anual">
       <span class="resumen-titulo">${state.anioActivo ? `Resumen de ${state.anioActivo}` : 'Resumen por mes'} — clic para navegar</span>
       <div class="resumen-barras">
-        ${meses.map(key => {
-          const count  = porMes[key] || 0;
+        ${state.meses.slice().reverse().map(({ month: key, total: count }) => {
           const pct    = Math.max(Math.round((count / maxCount) * 100), 8);
           const activo = key === state.mesActivo;
           return `
-            <button type="button" class="resumen-mes${activo ? ' activo' : ''}" data-mes="${key}"
+            <button type="button" class="resumen-mes${activo ? ' activo' : ''}" aria-pressed="${activo}" data-mes="${key}"
                     title="${mesLabel(key)}: ${count} actividad${count !== 1 ? 'es' : ''}">
               <span class="resumen-bar" style="--pct:${pct}%"></span>
               <span class="resumen-count">${count}</span>
@@ -200,13 +232,16 @@ function renderResumenAnual() {
   resumen.querySelectorAll('.resumen-mes').forEach(btn => {
     btn.addEventListener('click', () => {
       state.mesActivo = btn.dataset.mes;
-      state.anioActivo = btn.dataset.mes.substring(0, 4);
+      const nextYear = btn.dataset.mes.substring(0, 4);
+      const refreshFilters = state.anioActivo !== nextYear;
+      state.anioActivo = nextYear;
       const yearSelect = getElement('#nivel-filtro-anio');
       if (yearSelect) yearSelect.value = state.anioActivo;
-      updateActivityUrl();
+      state.pagina = 1;
       renderResumenAnual();
       renderTabsMes(getMesesDisponibles());
-      renderGrillaGrados();
+      updateActivityUrl();
+      cargarActividades(refreshFilters);
     });
   });
 }
@@ -217,31 +252,47 @@ function renderTabsMes(meses) {
   if (!tabs) return;
 
   tabs.innerHTML = `
-    <button type="button" role="tab" aria-selected="${state.mesActivo === null}" class="nivel-mes-tab${state.mesActivo === null ? ' activo' : ''}" data-mes="todos">
+    <button id="nivel-mes-tab-todos" type="button" role="tab" aria-controls="nivel-contenido" tabindex="${state.mesActivo === null ? '0' : '-1'}" aria-selected="${state.mesActivo === null}" class="nivel-mes-tab${state.mesActivo === null ? ' activo' : ''}" data-mes="todos">
       Todo el historial
     </button>
     ${meses.map(key => `
-    <button type="button" role="tab" aria-selected="${key === state.mesActivo}" class="nivel-mes-tab${key === state.mesActivo ? ' activo' : ''}" data-mes="${sanitize(key)}">
+    <button id="nivel-mes-tab-${sanitize(key)}" type="button" role="tab" aria-controls="nivel-contenido" tabindex="${key === state.mesActivo ? '0' : '-1'}" aria-selected="${key === state.mesActivo}" class="nivel-mes-tab${key === state.mesActivo ? ' activo' : ''}" data-mes="${sanitize(key)}">
       ${sanitize(mesLabel(key))}
     </button>`).join('')}`;
+  const selectedTabId = state.mesActivo
+    ? `nivel-mes-tab-${state.mesActivo}`
+    : 'nivel-mes-tab-todos';
+  getElement('#nivel-contenido')?.setAttribute('aria-labelledby', selectedTabId);
 
-  tabs.querySelectorAll('.nivel-mes-tab').forEach(btn => {
+  const monthTabs = [...tabs.querySelectorAll('.nivel-mes-tab')];
+  monthTabs.forEach((btn, index) => {
     btn.addEventListener('click', () => {
       state.mesActivo = btn.dataset.mes === 'todos' ? null : btn.dataset.mes;
-      if (state.mesActivo) {
-        state.anioActivo = state.mesActivo.substring(0, 4);
-        const yearSelect = getElement('#nivel-filtro-anio');
-        if (yearSelect) yearSelect.value = state.anioActivo;
-      }
-      tabs.querySelectorAll('.nivel-mes-tab').forEach(b => {
-        b.classList.remove('activo');
-        b.setAttribute('aria-selected', 'false');
-      });
-      btn.classList.add('activo');
-      btn.setAttribute('aria-selected', 'true');
-      renderResumenAnual();
-      renderGrillaGrados();
+      const selectedYear = state.mesActivo?.substring(0, 4) || '';
+      const refreshFilters = selectedYear !== state.anioActivo;
+      state.anioActivo = selectedYear;
+      const yearSelect = getElement('#nivel-filtro-anio');
+      if (yearSelect) yearSelect.value = state.anioActivo;
+      state.pagina = 1;
+      renderTabsMes(getMesesDisponibles());
+      getElement(`#${selectedTabId}`)?.focus();
       updateActivityUrl();
+      cargarActividades(refreshFilters);
+    });
+    btn.addEventListener('keydown', event => {
+      const nextIndex = event.key === 'ArrowRight'
+        ? (index + 1) % monthTabs.length
+        : event.key === 'ArrowLeft'
+          ? (index - 1 + monthTabs.length) % monthTabs.length
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? monthTabs.length - 1
+              : -1;
+      if (nextIndex < 0) return;
+      event.preventDefault();
+      monthTabs[nextIndex].focus();
+      monthTabs[nextIndex].click();
     });
   });
 }
@@ -255,35 +306,41 @@ function bindFilters() {
   const year = getElement('#nivel-filtro-anio');
   const level = getElement('#nivel-filtro-nivel');
   const clear = getElement('#nivel-filtros-limpiar');
+  let searchTimer;
   if (input) {
     input.addEventListener('input', () => {
       state.filtroActivo = normalizarTexto(input.value);
+      state.pagina = 1;
       updateActivityUrl();
-      renderGrillaGrados();
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => cargarActividades(), 300);
     });
   }
   if (inspector) {
     inspector.addEventListener('change', () => {
       state.inspectorActivo = inspector.value;
+      state.pagina = 1;
       updateActivityUrl();
-      renderGrillaGrados();
+      cargarActividades();
     });
   }
   year?.addEventListener('change', () => {
     state.anioActivo = year.value;
     state.mesActivo = null;
-    renderTabsMes(getMesesDisponibles());
-    renderResumenAnual();
+    state.pagina = 1;
     updateActivityUrl();
-    renderGrillaGrados();
+    cargarActividades(true);
   });
   level?.addEventListener('change', async () => {
     state.nivel = level.value;
     state.mesActivo = null;
+    state.anioActivo = '';
     state.inspectorActivo = '';
+    state.pagina = 1;
     openedDeepLinkId = '';
     const inspectorSelect = getElement('#nivel-filtro-inspector');
     if (inspectorSelect) inspectorSelect.value = '';
+    if (year) year.value = '';
     const title = getElement('#nivel-titulo');
     const icon = getElement('#nivel-icono');
     const info = NIVELES[state.nivel];
@@ -291,7 +348,7 @@ function bindFilters() {
     if (icon) icon.textContent = info?.icono || '📚';
     document.title = `${info?.nombre || 'Actividades de Inspectores'} | Jefatura Distrital Quilmes`;
     updateActivityUrl();
-    await cargarActividades();
+    await cargarActividades(true);
   });
   clear?.addEventListener('click', () => {
     if (input) input.value = '';
@@ -301,10 +358,21 @@ function bindFilters() {
     state.inspectorActivo = '';
     state.anioActivo = '';
     state.mesActivo = null;
-    renderResumenAnual();
-    renderTabsMes(getMesesDisponibles());
+    state.pagina = 1;
+    openedDeepLinkId = '';
     updateActivityUrl();
-    renderGrillaGrados();
+    cargarActividades(true);
+  });
+
+  getElement('#activity-page-prev')?.addEventListener('click', () => {
+    if (state.pagina <= 1) return;
+    state.pagina -= 1;
+    cargarActividades();
+  });
+  getElement('#activity-page-next')?.addEventListener('click', () => {
+    if (!state.paginacion.hasNext) return;
+    state.pagina += 1;
+    cargarActividades();
   });
 }
 
@@ -383,33 +451,28 @@ function renderGrillaGrados() {
   const contenedor = getElement('#nivel-contenido');
   if (!contenedor) return;
 
-  let delMes = state.mesActivo
-    ? state.actividades.filter(a => mesKey(a.mes) === state.mesActivo)
-    : [...state.actividades];
-
-  delMes = delMes.filter(activity => {
-    const searchable = normalizarTexto([
-      activity.grado,
-      activity.escuela,
-      activity.inspector_nombre,
-      activity.titulo,
-      activity.descripcion
-    ].join(' '));
-    const matchesSearch = !state.filtroActivo || searchable.includes(state.filtroActivo);
-    const matchesInspector = !state.inspectorActivo || activity.inspector_nombre === state.inspectorActivo;
-    const matchesYear = !state.anioActivo || mesKey(activity.mes).substring(0, 4) === state.anioActivo;
-    return matchesSearch && matchesInspector && matchesYear;
-  });
+  const delMes = state.actividades;
 
   const results = getElement('#nivel-resultados');
   if (results) {
     const dateLabel = state.mesActivo ? mesLabel(state.mesActivo) : state.anioActivo || 'todo el historial';
-    results.textContent = `${delMes.length} de ${state.actividades.length} actividades · ${dateLabel}`;
+    results.textContent = `${state.paginacion.total} actividad${state.paginacion.total === 1 ? '' : 'es'} · ${dateLabel}`;
+  }
+
+  const previous = getElement('#activity-page-prev');
+  const next = getElement('#activity-page-next');
+  const pageStatus = getElement('#activity-page-status');
+  if (previous) previous.disabled = state.pagina <= 1;
+  if (next) next.disabled = !state.paginacion.hasNext;
+  if (pageStatus) {
+    pageStatus.textContent = state.paginacion.totalPages
+      ? `Página ${state.pagina} de ${state.paginacion.totalPages}`
+      : 'Sin páginas';
   }
 
   if (delMes.length === 0) {
     const hasFilters = state.filtroActivo || state.inspectorActivo || state.anioActivo ||
-      new URLSearchParams(window.location.search).has('actividad');
+      state.mesActivo || new URLSearchParams(window.location.search).has('actividad');
     const msg = hasFilters
       ? 'No hay actividades que coincidan con los filtros elegidos.'
       : state.mesActivo
@@ -477,7 +540,7 @@ function mostrarDetalle(actividad) {
     <button class="foto-nav foto-prev" type="button" aria-label="Anterior">‹</button>
     <button class="foto-nav foto-next" type="button" aria-label="Siguiente">›</button>
     <div class="foto-dots">
-      ${imagenes.map((_,i) => `<span class="foto-dot${i===0?' activo':''}" data-idx="${i}"></span>`).join('')}
+      ${imagenes.map((_,i) => `<button class="foto-dot${i===0?' activo':''}" type="button" data-idx="${i}" aria-label="Ver foto ${i + 1}" aria-current="${i === 0 ? 'true' : 'false'}"></button>`).join('')}
     </div>
     <div class="foto-counter"><span class="foto-actual">1</span> / ${total}</div>` : '';
 
@@ -505,6 +568,7 @@ function mostrarDetalle(actividad) {
       </div>` : ''}`;
 
   if (total > 1) initCarousel(total);
+  bindDetailModalKeys();
 
   const shareUrl = new URL(window.location.href);
   shareUrl.searchParams.set('nivel', state.nivel);
@@ -526,11 +590,16 @@ function mostrarDetalle(actividad) {
   getElement('#actividad-print')?.addEventListener('click', () => window.print());
   updateActivityUrl(String(actividad.id));
 
+  _previousFocus = document.activeElement;
   modal.classList.add('visible');
   modal.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  getElement('#nivel-detalle-cerrar')?.focus();
 }
 
 let _keyHandler = null;
+let _previousFocus = null;
+let _carouselGoTo = null;
 
 function initCarousel(total) {
   const track = getElement('#foto-track');
@@ -543,8 +612,12 @@ function initCarousel(total) {
     track.style.transform = `translateX(-${current * 100}%)`;
     const counter = getElement('.foto-actual');
     if (counter) counter.textContent = current + 1;
-    dots.forEach((d, i) => d.classList.toggle('activo', i === current));
+    dots.forEach((d, i) => {
+      d.classList.toggle('activo', i === current);
+      d.setAttribute('aria-current', String(i === current));
+    });
   };
+  _carouselGoTo = delta => goTo(current + delta);
 
   getElement('.foto-prev')?.addEventListener('click', () => goTo(current - 1));
   getElement('.foto-next')?.addEventListener('click', () => goTo(current + 1));
@@ -558,14 +631,37 @@ function initCarousel(total) {
     if (Math.abs(diff) > 40) goTo(diff > 0 ? current + 1 : current - 1);
   });
 
-  // Teclado
+}
+
+function bindDetailModalKeys() {
   if (_keyHandler) document.removeEventListener('keydown', _keyHandler);
   _keyHandler = e => {
-    if (e.key === 'ArrowRight') goTo(current + 1);
-    if (e.key === 'ArrowLeft')  goTo(current - 1);
-    if (e.key === 'Escape')     cerrarDetalle();
+    if (e.key === 'Escape') cerrarDetalle();
+    const isEditingText = e.target instanceof HTMLElement &&
+      e.target.matches('input, textarea, select, [contenteditable="true"]');
+    if (!isEditingText && e.key === 'ArrowRight') _carouselGoTo?.(1);
+    if (!isEditingText && e.key === 'ArrowLeft') _carouselGoTo?.(-1);
+    if (e.key === 'Tab') {
+      const focusable = [...modalFocusableElements()];
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
   };
   document.addEventListener('keydown', _keyHandler);
+}
+
+function* modalFocusableElements() {
+  const modal = getElement('#nivel-detalle-modal');
+  if (!modal) return;
+  yield* modal.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href], [tabindex="0"]');
 }
 
 function cerrarDetalle() {
@@ -573,10 +669,14 @@ function cerrarDetalle() {
   if (!modal) return;
   modal.classList.remove('visible');
   modal.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
   updateActivityUrl();
   openedDeepLinkId = '';
   renderGrillaGrados();
   if (_keyHandler) { document.removeEventListener('keydown', _keyHandler); _keyHandler = null; }
+  _carouselGoTo = null;
+  if (_previousFocus instanceof HTMLElement) _previousFocus.focus();
+  _previousFocus = null;
 }
 
 document.addEventListener('DOMContentLoaded', () => {

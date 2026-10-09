@@ -89,11 +89,20 @@
       <section class="seccion-titulo" aria-labelledby="titulo-noticias">
         <h2 id="titulo-noticias">Últimas noticias</h2>
         <div class="section-actions">
-          <a href="#" class="ver-mas-link" aria-label="Ver todas las noticias">Ver todas →</a>
+          <label class="news-category-filter" for="news-category-filter">
+            <span class="sr-only">Filtrar noticias por categoría</span>
+            <select id="news-category-filter" aria-label="Filtrar noticias por categoría">
+              <option value="">Todas las categorías</option>
+            </select>
+          </label>
         </div>
       </section>
       <div class="grid-noticias" id="grid-noticias" aria-live="polite" aria-label="Lista de noticias recientes">
         <div class="sin-noticias">Cargando noticias...</div>
+      </div>
+      <div class="news-pagination">
+        <p id="news-pagination-status" role="status" aria-live="polite"></p>
+        <button id="news-load-more" class="btn-secondary" type="button" hidden>Cargar más noticias</button>
       </div>
 
       <!-- ACTIVIDADES RECIENTES -->

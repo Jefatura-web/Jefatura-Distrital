@@ -16,6 +16,8 @@ const loginLimiter = createLoginAttemptLimiter();
 
 // Rutas públicas (lectura)
 router.get('/', noticiasController.getAll);
+router.get('/categorias', noticiasController.getCategorias);
+router.get('/calendario', noticiasController.getCalendar);
 router.get('/slug/:slug', noticiasController.getBySlug);
 router.get('/stats', noticiasController.getStats);
 

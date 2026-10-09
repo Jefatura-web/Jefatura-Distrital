@@ -42,12 +42,14 @@ function isValidMes(mes) {
 function getPagination(query) {
   const requestedPage = Number.parseInt(query.page, 10);
   const requestedLimit = Number.parseInt(query.limit, 10);
-  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const page = Number.isSafeInteger(requestedPage) && requestedPage > 0
+    ? Math.min(requestedPage, 100000)
+    : 1;
   const limit = Number.isSafeInteger(requestedLimit) && requestedLimit > 0
     ? Math.min(requestedLimit, MAX_PAGE_SIZE)
     : 50;
 
-  return { limit, offset: (page - 1) * limit };
+  return { page, limit, offset: (page - 1) * limit };
 }
 
 function normalizeMesToFirstDay(mes) {
@@ -128,12 +130,12 @@ function attachImagenes(actividades, callback) {
 /**
  * Listado público de actividades, filtrable por nivel (requerido) y mes (opcional, YYYY-MM).
  */
-function getAll(req, res) {
+function getAll(req, res, { paginated = false } = {}) {
   if (!db) {
     return res.status(500).json({ error: 'Conexión a BD no disponible' });
   }
 
-  const { nivel, mes, grado, anio } = req.query;
+  const { nivel, mes, grado, anio, inspector, search } = req.query;
 
   if (nivel && !isValidNivel(nivel)) {
     return res.status(400).json({ error: `Parámetro 'nivel' inválido. Valores permitidos: ${NIVELES_VALIDOS.join(', ')}` });
@@ -168,10 +170,25 @@ function getAll(req, res) {
     params.push(String(grado));
   }
 
+  if (inspector) {
+    conditions.push('inspector_nombre = ?');
+    params.push(String(inspector).trim().substring(0, 150));
+  }
+
+  if (search) {
+    conditions.push('(titulo LIKE ? OR descripcion LIKE ? OR inspector_nombre LIKE ? OR grado LIKE ? OR escuela LIKE ?)');
+    const searchTerm = `%${String(search).trim().substring(0, 200)}%`;
+    params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+  }
+
+  const whereSql = conditions.join(' AND ');
+  const pagination = paginated ? getPagination(req.query) : null;
   const sql = `SELECT id, nivel, grado, escuela, mes, titulo, descripcion, inspector_nombre, created_at, updated_at
                FROM actividades_inspectores
-               WHERE ${conditions.join(' AND ')}
-               ORDER BY mes DESC, grado ASC, id DESC`;
+               WHERE ${whereSql}
+               ORDER BY mes DESC, grado ASC, id DESC${
+                 pagination ? ` LIMIT ${pagination.limit} OFFSET ${pagination.offset}` : ''
+               }`;
 
   db.query(sql, params, (err, results) => {
     if (err) {
@@ -182,14 +199,107 @@ function getAll(req, res) {
       });
     }
 
-    attachImagenes(results || [], (imgErr, conImagenes) => {
+    const respondWithActivities = (rows, total) => attachImagenes(rows || [], (imgErr, conImagenes) => {
       if (imgErr) {
         console.error('[DB Error] actividades.getAll.attachImagenes:', imgErr);
         return res.status(500).json({ error: 'Error al obtener imágenes de actividades' });
       }
-      res.json(conImagenes);
+      if (!pagination) return res.json(conImagenes);
+      const totalPages = Math.ceil(total / pagination.limit);
+      res.json({
+        data: conImagenes,
+        pagination: {
+          page: Math.min(pagination.page, Math.max(totalPages, 1)),
+          limit: pagination.limit,
+          total,
+          totalPages,
+          hasNext: pagination.page < totalPages
+        }
+      });
     });
+
+    if (!pagination) return respondWithActivities(results, 0);
+    db.query(
+      `SELECT COUNT(*) AS total FROM actividades_inspectores WHERE ${whereSql}`,
+      params,
+      (countErr, countRows) => {
+        if (countErr) {
+          console.error('[DB Error] actividades.getAll.count:', countErr);
+          return res.status(500).json({ error: 'Error al contar actividades' });
+        }
+        const total = Number(countRows?.[0]?.total || 0);
+        const totalPages = Math.ceil(total / pagination.limit);
+        const effectivePage = Math.min(pagination.page, Math.max(totalPages, 1));
+        if (effectivePage === pagination.page) return respondWithActivities(results, total);
+
+        const correctedSql = sql.replace(
+          /LIMIT \d+ OFFSET \d+$/,
+          `LIMIT ${pagination.limit} OFFSET ${(effectivePage - 1) * pagination.limit}`
+        );
+        db.query(correctedSql, params, (pageErr, pageResults) => {
+          if (pageErr) {
+            console.error('[DB Error] actividades.getAll.correctedPage:', pageErr);
+            return res.status(500).json({ error: 'Error al cargar la página de actividades' });
+          }
+          respondWithActivities(pageResults || [], total);
+        });
+      }
+    );
   });
+}
+
+function getFilterOptions(req, res) {
+  if (!db) return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  const { nivel } = req.query;
+  if (nivel && !isValidNivel(nivel)) {
+    return res.status(400).json({ error: `nivel inválido. Valores permitidos: ${NIVELES_VALIDOS.join(', ')}` });
+  }
+
+  const anio = req.query.anio;
+  if (anio !== undefined && (!/^\d{4}$/.test(String(anio)) || Number(anio) < 1900)) {
+    return res.status(400).json({ error: "Parámetro 'anio' inválido. Formato esperado: YYYY" });
+  }
+  const levelCondition = nivel ? 'AND nivel = ?' : '';
+  const levelParams = nivel ? [String(nivel).toLowerCase().trim()] : [];
+  db.query(
+    `SELECT DISTINCT YEAR(mes) AS anio, inspector_nombre
+     FROM actividades_inspectores
+     WHERE deleted_at IS NULL ${levelCondition}
+     ORDER BY anio DESC, inspector_nombre ASC`,
+    levelParams,
+    (err, rows) => {
+      if (err) {
+        console.error('[DB Error] actividades.getFilterOptions:', err);
+        return res.status(500).json({ error: 'No se pudieron cargar las opciones de filtro' });
+      }
+      const monthParams = [...levelParams];
+      let yearCondition = '';
+      if (anio !== undefined) {
+        yearCondition = 'AND YEAR(mes) = ?';
+        monthParams.push(Number(anio));
+      }
+      db.query(
+        `SELECT DATE_FORMAT(mes, '%Y-%m') AS mes, COUNT(*) AS total
+         FROM actividades_inspectores
+         WHERE deleted_at IS NULL ${levelCondition} ${yearCondition}
+         GROUP BY mes
+         ORDER BY mes DESC`,
+        monthParams,
+        (monthErr, monthRows) => {
+          if (monthErr) {
+            console.error('[DB Error] actividades.getFilterOptions.months:', monthErr);
+            return res.status(500).json({ error: 'No se pudieron cargar los meses disponibles' });
+          }
+          res.json({
+            years: [...new Set((rows || []).map(row => String(row.anio)))],
+            inspectors: [...new Set((rows || []).map(row => String(row.inspector_nombre || '').trim()).filter(Boolean))]
+              .sort((a, b) => a.localeCompare(b, 'es')),
+            months: (monthRows || []).map(row => ({ month: row.mes, total: Number(row.total) }))
+          });
+        }
+      );
+    }
+  );
 }
 
 function getRecent(req, res) {
@@ -549,6 +659,8 @@ function remove(req, res) {
 const router = express.Router();
 
 router.get('/recientes', getRecent);
+router.get('/filtros', getFilterOptions);
+router.get('/pagina', (req, res) => getAll(req, res, { paginated: true }));
 router.get('/', getAll);                                    // ?nivel=inicial&anio=2026&mes=2026-04
 router.get('/admin/deleted', requireAuth, getDeletedAdmin);
 router.get('/admin/list', requireAuth, getAllAdmin);         // /admin/list, no /admin (ver nota sobre shadowing en noticiasRoutes.js)

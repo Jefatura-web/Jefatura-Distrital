@@ -3,13 +3,14 @@
  * ✅ FIX: prevMonth/nextMonth ahora pasan allNoticias al renderizar
  */
 
-import { formatDate, dateToISO, handleError, getElement, sanitize } from './utils.js';
+import { apiFetch, formatDate, dateToISO, handleError, getElement, sanitize } from './utils.js';
 
 export const calendarState = {
   date: new Date(),
   selectedDate: null,
-  noticias: []   // ✅ FIX: guardamos las noticias en el estado del módulo
+  noticias: []
 };
+let calendarRequestId = 0;
 
 export function initCalendar(allNoticias = []) {
   calendarState.noticias = allNoticias;
@@ -24,17 +25,53 @@ export function initCalendar(allNoticias = []) {
   if (prev) prev.addEventListener('click', prevMonth);
   if (next) next.addEventListener('click', nextMonth);
 
-  renderCalendar();
+  loadCalendarMonth();
 }
 
 function prevMonth() {
   calendarState.date.setMonth(calendarState.date.getMonth() - 1);
-  renderCalendar(); // ✅ FIX: ya no necesita parámetro, usa calendarState.noticias
+  calendarState.selectedDate = null;
+  loadCalendarMonth();
 }
 
 function nextMonth() {
   calendarState.date.setMonth(calendarState.date.getMonth() + 1);
+  calendarState.selectedDate = null;
+  loadCalendarMonth();
+}
+
+async function loadCalendarMonth() {
+  const requestId = ++calendarRequestId;
+  const month = `${calendarState.date.getFullYear()}-${String(calendarState.date.getMonth() + 1).padStart(2, '0')}`;
+  const grid = getElement('#calendar-grid');
+  const results = getElement('#calendar-results');
+  if (grid) grid.setAttribute('aria-busy', 'true');
+  if (results) results.innerHTML = '<h5>Noticias por fecha</h5><div class="sin-noticias" role="status">Cargando noticias del mes…</div>';
+  calendarState.noticias = [];
   renderCalendar();
+
+  try {
+    const news = await apiFetch(`/noticias/calendario?mes=${encodeURIComponent(month)}`);
+    if (requestId !== calendarRequestId) return;
+    if (!Array.isArray(news)) throw new Error('La API devolvió un formato de calendario inesperado');
+    calendarState.noticias = news.map(noticia => ({
+      ...noticia,
+      fecha: String(noticia.fecha || '').substring(0, 10)
+    }));
+    renderCalendar();
+    if (calendarState.selectedDate) showNewsForDate(calendarState.selectedDate);
+    else if (results) results.innerHTML = '<h5>Noticias por fecha</h5><div class="sin-noticias">Seleccioná un día para ver las noticias de esa fecha.</div>';
+  } catch (error) {
+    if (requestId !== calendarRequestId) return;
+    handleError(error, 'loadCalendarMonth');
+    const results = getElement('#calendar-results');
+    if (results) {
+      results.innerHTML = '<h5>Calendario</h5><div class="sin-noticias" role="alert">No se pudieron cargar las noticias de este mes. <button type="button" id="calendar-retry">Reintentar</button></div>';
+      getElement('#calendar-retry')?.addEventListener('click', loadCalendarMonth);
+    }
+  } finally {
+    if (requestId === calendarRequestId && grid) grid.removeAttribute('aria-busy');
+  }
 }
 
 export function renderCalendar() {
@@ -134,7 +171,7 @@ export function showNewsForDate(date) {
     const cards = matches.map(n => `
       <article class="calendar-news-card">
         <h6>${sanitize(n.titulo)}</h6>
-        <p>${sanitize(n.texto.substring(0, 120))}...</p>
+        <p>${sanitize(n.descripcion || n.texto || '').substring(0, 120)}…</p>
       </article>
     `).join('');
 

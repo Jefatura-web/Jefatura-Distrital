@@ -692,6 +692,7 @@
       align-items: center;
       justify-content: center;
       font-size: 44px;
+      background: linear-gradient(135deg, var(--category-color, var(--azul-marino)), #ffffff);
     }
     .cn-imagen.azul { background: linear-gradient(135deg, var(--azul-marino), var(--celeste)); }
     .cn-imagen.dorado { background: linear-gradient(135deg, #8b6914, var(--dorado)); }
@@ -703,7 +704,8 @@
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 1px;
-      color: var(--celeste);
+      color: var(--azul-marino);
+      border-bottom: 2px solid var(--category-color, var(--celeste));
       margin-bottom: 7px;
     }
     .cn-body h4 {
@@ -2046,5 +2048,93 @@
     max-width: 100%;
     max-height: 75vh;
     object-fit: contain;
+  }
+}
+
+.news-category-filter select,
+.news-pagination button,
+.activity-pagination button {
+  min-height: 42px;
+  padding: 9px 14px;
+  border: 1px solid var(--borde);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--azul-marino);
+  font: inherit;
+}
+
+.news-pagination,
+.activity-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 20px 0 30px;
+}
+
+.news-pagination p,
+.activity-pagination span {
+  margin: 0;
+  color: var(--gris-texto);
+  font-size: 14px;
+}
+
+.news-pagination button,
+.activity-pagination button {
+  background: var(--azul-marino);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.news-pagination button:hover:not(:disabled),
+.activity-pagination button:hover:not(:disabled) {
+  background: var(--azul-medio);
+}
+
+.news-pagination button:disabled,
+.activity-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.news-category-filter select:focus-visible,
+.news-pagination button:focus-visible,
+.activity-pagination button:focus-visible,
+.resumen-mes:focus-visible,
+.foto-dot:focus-visible,
+.foto-nav:focus-visible {
+  outline: 3px solid var(--dorado);
+  outline-offset: 3px;
+}
+
+.foto-dot {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: rgba(13, 33, 84, .45);
+  cursor: pointer;
+}
+
+.foto-dot.activo {
+  background: var(--dorado);
+}
+
+@media (max-width: 600px) {
+  .news-pagination,
+  .activity-pagination {
+    gap: 8px;
+  }
+
+  .news-category-filter,
+  .news-category-filter select {
+    width: 100%;
+  }
+
+  .activity-pagination button {
+    flex: 1 1 125px;
   }
 }

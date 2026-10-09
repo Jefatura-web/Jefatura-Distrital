@@ -179,7 +179,7 @@
     <section class="admin-form-section" style="max-width:1400px;margin:24px auto 0;">
       <div class="form-header">
         <h2 id="actividad-form-title">Cargar actividad de inspector</h2>
-        <p class="form-hint">Elegí nivel, grado y mes. Podés cargar varias fotos (una URL por línea).</p>
+        <p class="form-hint">Elegí nivel, grado y mes; agregá el nombre del inspector para facilitar la búsqueda. Podés cargar varias fotos.</p>
       </div>
 
       <form id="form-crear-actividad" class="admin-form" aria-label="Formulario de actividades de inspectores">
@@ -223,7 +223,7 @@
           </div>
           <div class="form-group">
             <label for="actividad-inspector">Nombre del inspector (opcional)</label>
-            <input id="actividad-inspector" name="inspector_nombre" type="text" placeholder="Nombre y apellido" />
+            <input id="actividad-inspector" name="inspector_nombre" type="text" placeholder="Nombre y apellido" autocomplete="name" />
           </div>
           <div class="form-group">
             <label for="actividad-descripcion">Descripción</label>
@@ -255,29 +255,36 @@
     <section class="admin-form-section" style="max-width:1400px;margin:24px auto 40px;">
       <div class="form-header">
         <h2>Actividades cargadas</h2>
-        <p class="form-hint">Editá o eliminá actividades existentes. Filtrá por nivel si querés.</p>
+        <p class="form-hint">Buscá en todos los registros por texto y combiná nivel y mes. Editá, eliminá o recuperá actividades desde la papelera.</p>
       </div>
-      <div class="form-group" style="max-width:280px;">
-        <label for="actividad-filtro-nivel">Filtrar por nivel</label>
-        <select id="actividad-filtro-nivel">
-          <option value="">Todos los niveles</option>
-          <option value="inicial">Inicial</option>
-          <option value="primaria">Primaria</option>
-          <option value="secundaria">Secundaria</option>
-          <option value="tecnica">Técnica</option>
-          <option value="agraria">Agraria</option>
-          <option value="superior">Superior</option>
-          <option value="especial">Especial</option>
-          <option value="pcyps">PCYPS</option>
-          <option value="dejayam">DEJAYAM</option>
-          <option value="ed-fisica">Educación Física</option>
-          <option value="ed-artistica">Educación Artística</option>
-        </select>
+      <div class="admin-activity-filters">
+        <div class="form-group">
+          <label for="actividad-filtro-nivel">Filtrar por nivel</label>
+          <select id="actividad-filtro-nivel">
+            <option value="">Todos los niveles</option>
+            <option value="inicial">Inicial</option>
+            <option value="primaria">Primaria</option>
+            <option value="secundaria">Secundaria</option>
+            <option value="tecnica">Técnica</option>
+            <option value="agraria">Agraria</option>
+            <option value="superior">Superior</option>
+            <option value="especial">Especial</option>
+            <option value="pcyps">PCYPS</option>
+            <option value="dejayam">DEJAYAM</option>
+            <option value="ed-fisica">Educación Física</option>
+            <option value="ed-artistica">Educación Artística</option>
+          </select>
+        </div>
+        <div class="admin-list-controls">
+          <label for="admin-activity-month">Filtrar por mes</label>
+          <input id="admin-activity-month" type="month" />
+        </div>
+        <div class="admin-list-controls">
+          <label for="admin-activity-search">Buscar en actividades</label>
+          <input id="admin-activity-search" type="search" placeholder="Título, descripción, grado o inspector…" autocomplete="off" />
+        </div>
       </div>
-      <div class="admin-list-controls">
-        <label for="admin-activity-search">Buscar en todas las actividades</label>
-        <input id="admin-activity-search" type="search" placeholder="Título, grado o inspector…" autocomplete="off" />
-      </div>
+      <button id="admin-activity-clear-filters" class="btn-secondary" type="button">Limpiar filtros</button>
       <div id="admin-actividades-panel" class="admin-noticias-panel">
         <div class="admin-loading">Cargando actividades…</div>
       </div>

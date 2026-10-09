@@ -749,6 +749,20 @@ function initActividadesForm() {
     adminActivityPage = 1;
     loadAdminActividades();
   });
+  getElement('#admin-activity-month')?.addEventListener('change', () => {
+    adminActivityPage = 1;
+    loadAdminActividades();
+  });
+  getElement('#admin-activity-clear-filters')?.addEventListener('click', () => {
+    const level = getElement('#actividad-filtro-nivel');
+    const month = getElement('#admin-activity-month');
+    const search = getElement('#admin-activity-search');
+    if (level) level.value = '';
+    if (month) month.value = '';
+    if (search) search.value = '';
+    adminActivityPage = 1;
+    loadAdminActividades();
+  });
 }
 
 async function handleActividadSubmit(event) {
@@ -826,6 +840,8 @@ function formatActividadCard(actividad) {
   const titulo = sanitize(actividad.titulo || 'Sin título');
   const mes = sanitize(String(actividad.mes || '').substring(0, 7));
   const cantidadFotos = (actividad.imagenes || []).length;
+  const inspector = sanitize(actividad.inspector_nombre || 'Inspector/a no indicado');
+  const descripcion = sanitize(String(actividad.descripcion || '').trim());
   const primeraImagen = (actividad.imagenes && actividad.imagenes[0]) || '';
   const imgHtml = primeraImagen
     ? `<img src="${sanitize(primeraImagen)}" alt="Imagen" loading="lazy" onerror="this.onerror=null;this.src='logo_jefatura.jpg'">`
@@ -837,7 +853,8 @@ function formatActividadCard(actividad) {
       <div class="admin-news-content">
         <div class="admin-news-category">${nivel} · ${grado}</div>
         <h3>${titulo}</h3>
-        <p>${mes} — ${cantidadFotos} foto${cantidadFotos === 1 ? '' : 's'}</p>
+        <p>${mes} · 👤 ${inspector} · ${cantidadFotos} foto${cantidadFotos === 1 ? '' : 's'}</p>
+        ${descripcion ? `<p class="admin-activity-description">${descripcion}</p>` : ''}
       </div>
       <div class="admin-news-actions">
         <button type="button" class="btn-secondary actividad-edit-btn">Editar</button>
@@ -883,6 +900,8 @@ async function loadAdminActividades() {
     if (nivelFiltro) params.set('nivel', nivelFiltro);
     const search = getElement('#admin-activity-search')?.value.trim();
     if (search) params.set('search', search);
+    const month = getElement('#admin-activity-month')?.value;
+    if (month) params.set('mes', month);
     const actividades = await apiFetch(`/actividades/admin/list?${params}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });

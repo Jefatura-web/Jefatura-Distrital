@@ -301,6 +301,8 @@
     }
     .form-group {
       margin-bottom: 18px;
+      min-width: 0;
+      box-sizing: border-box;
     }
     .form-group label {
       display: block;
@@ -1396,6 +1398,7 @@
   .footer-admin-access { margin-left: 0; width: 100%; }
   .nivel-header h1 { font-size: 20px; }
   .nivel-grid-grados { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  .nivel-filtros { grid-template-columns: 1fr; gap: 8px; }
 }
 
 /* ════════════════════════════════════════════════════
@@ -1480,6 +1483,55 @@
   background: transparent;
 }
 #nivel-filtro::placeholder { color: rgba(68,75,94,0.45); }
+
+.nivel-filtros {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(190px, 280px) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.nivel-filtros .nivel-filtro-wrap {
+  margin: 0;
+}
+
+.nivel-inspector-filtro {
+  display: grid;
+  gap: 4px;
+  color: var(--gris-texto, #444b5e);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.nivel-inspector-filtro select {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 2px solid var(--borde, #dde3ef);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--gris-texto, #444b5e);
+  font: inherit;
+}
+
+.nivel-limpiar-filtros {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--borde, #dde3ef);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--azul-marino, #0d2154);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nivel-resultados {
+  margin: 0 0 14px;
+  color: var(--gris-texto, #444b5e);
+  font-size: 13px;
+}
 
 /* ── Tarjeta de grado mejorada (override) ──────────── */
 .grado-imagen {

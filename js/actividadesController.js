@@ -216,7 +216,7 @@ function getAllAdmin(req, res) {
     return res.status(500).json({ error: 'Conexión a BD no disponible' });
   }
 
-  const { nivel, search, page = 1, limit = 50 } = req.query;
+  const { nivel, mes, search, page = 1, limit = 50 } = req.query;
   const conditions = ['deleted_at IS NULL'];
   const params = [];
 
@@ -226,6 +226,14 @@ function getAllAdmin(req, res) {
     }
     conditions.push('nivel = ?');
     params.push(String(nivel).toLowerCase().trim());
+  }
+
+  if (mes) {
+    if (!isValidMes(mes) || !/^\d{4}-\d{2}$/.test(String(mes))) {
+      return res.status(400).json({ error: "Parámetro 'mes' inválido. Formato esperado: YYYY-MM" });
+    }
+    conditions.push('DATE_FORMAT(mes, "%Y-%m") = ?');
+    params.push(String(mes));
   }
 
   if (search) {

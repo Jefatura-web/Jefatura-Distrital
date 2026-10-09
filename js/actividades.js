@@ -29,7 +29,8 @@ const state = {
   nivel:        null,
   actividades:  [],
   mesActivo:    null,
-  filtroActivo: ''
+  filtroActivo: '',
+  inspectorActivo: ''
 };
 
 // ── Helpers de fecha ──────────────────────────────────────────────────────────
@@ -80,6 +81,7 @@ async function cargarActividades() {
     const meses = [...new Set(state.actividades.map(a => mesKey(a.mes)))].sort().reverse();
     state.mesActivo = meses[0];
 
+    renderInspectorOptions();
     renderResumenAnual();
     renderTabsMes(meses);
     initFiltro();
@@ -88,6 +90,18 @@ async function cargarActividades() {
     handleError(err, 'cargarActividades');
     if (contenedor) contenedor.innerHTML = '<div class="nivel-error">No se pudieron cargar las actividades. Intentá más tarde.</div>';
   }
+}
+
+function renderInspectorOptions() {
+  const select = getElement('#nivel-filtro-inspector');
+  if (!select) return;
+
+  const inspectors = [...new Set(state.actividades
+    .map(activity => String(activity.inspector_nombre || '').trim())
+    .filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'es'));
+  select.innerHTML = '<option value="">Todos los inspectores</option>' +
+    inspectors.map(name => `<option value="${sanitize(name)}">${sanitize(name)}</option>`).join('');
 }
 
 // ── Resumen anual ─────────────────────────────────────────────────────────────
@@ -136,16 +150,24 @@ function renderTabsMes(meses) {
   const tabs = getElement('#nivel-meses');
   if (!tabs) return;
 
-  tabs.innerHTML = meses.map(key => `
-    <button type="button" class="nivel-mes-tab${key === state.mesActivo ? ' activo' : ''}" data-mes="${sanitize(key)}">
+  tabs.innerHTML = `
+    <button type="button" role="tab" aria-selected="${state.mesActivo === null}" class="nivel-mes-tab${state.mesActivo === null ? ' activo' : ''}" data-mes="todos">
+      Todo el historial
+    </button>
+    ${meses.map(key => `
+    <button type="button" role="tab" aria-selected="${key === state.mesActivo}" class="nivel-mes-tab${key === state.mesActivo ? ' activo' : ''}" data-mes="${sanitize(key)}">
       ${sanitize(mesLabel(key))}
-    </button>`).join('');
+    </button>`).join('')}`;
 
   tabs.querySelectorAll('.nivel-mes-tab').forEach(btn => {
     btn.addEventListener('click', () => {
-      state.mesActivo = btn.dataset.mes;
-      tabs.querySelectorAll('.nivel-mes-tab').forEach(b => b.classList.remove('activo'));
+      state.mesActivo = btn.dataset.mes === 'todos' ? null : btn.dataset.mes;
+      tabs.querySelectorAll('.nivel-mes-tab').forEach(b => {
+        b.classList.remove('activo');
+        b.setAttribute('aria-selected', 'false');
+      });
       btn.classList.add('activo');
+      btn.setAttribute('aria-selected', 'true');
       renderResumenAnual();
       renderGrillaGrados();
     });
@@ -155,13 +177,40 @@ function renderTabsMes(meses) {
 // ── Filtro de búsqueda ────────────────────────────────────────────────────────
 function initFiltro() {
   const input = getElement('#nivel-filtro');
-  if (!input) return;
-  input.value = '';
-  state.filtroActivo = '';
-  input.addEventListener('input', () => {
-    state.filtroActivo = input.value.trim().toLowerCase();
+  const inspector = getElement('#nivel-filtro-inspector');
+  const clear = getElement('#nivel-filtros-limpiar');
+  if (input) {
+    input.value = '';
+    state.filtroActivo = '';
+    input.addEventListener('input', () => {
+      state.filtroActivo = normalizarTexto(input.value);
+      renderGrillaGrados();
+    });
+  }
+  if (inspector) {
+    inspector.value = '';
+    state.inspectorActivo = '';
+    inspector.addEventListener('change', () => {
+      state.inspectorActivo = inspector.value;
+      renderGrillaGrados();
+    });
+  }
+  clear?.addEventListener('click', () => {
+    if (input) input.value = '';
+    if (inspector) inspector.value = '';
+    state.filtroActivo = '';
+    state.inspectorActivo = '';
+    state.mesActivo = null;
+    const meses = [...new Set(state.actividades.map(activity => mesKey(activity.mes)))].sort().reverse();
+    renderResumenAnual();
+    renderTabsMes(meses);
     renderGrillaGrados();
   });
+}
+
+function normalizarTexto(value) {
+  return String(value || '').trim().toLocaleLowerCase('es-AR')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
 // ── Grilla de grados ──────────────────────────────────────────────────────────
@@ -169,21 +218,35 @@ function renderGrillaGrados() {
   const contenedor = getElement('#nivel-contenido');
   if (!contenedor) return;
 
-  let delMes = state.actividades.filter(a => mesKey(a.mes) === state.mesActivo);
+  let delMes = state.mesActivo
+    ? state.actividades.filter(a => mesKey(a.mes) === state.mesActivo)
+    : [...state.actividades];
 
-  if (state.filtroActivo) {
-    const q = state.filtroActivo;
-    delMes = delMes.filter(a =>
-      (a.grado            || '').toLowerCase().includes(q) ||
-      (a.inspector_nombre || '').toLowerCase().includes(q) ||
-      (a.titulo           || '').toLowerCase().includes(q)
-    );
+  delMes = delMes.filter(activity => {
+    const searchable = normalizarTexto([
+      activity.grado,
+      activity.inspector_nombre,
+      activity.titulo,
+      activity.descripcion
+    ].join(' '));
+    const matchesSearch = !state.filtroActivo || searchable.includes(state.filtroActivo);
+    const matchesInspector = !state.inspectorActivo || activity.inspector_nombre === state.inspectorActivo;
+    return matchesSearch && matchesInspector;
+  });
+
+  const results = getElement('#nivel-resultados');
+  if (results) {
+    const dateLabel = state.mesActivo ? mesLabel(state.mesActivo) : 'todo el historial';
+    results.textContent = `${delMes.length} de ${state.actividades.length} actividades · ${dateLabel}`;
   }
 
   if (delMes.length === 0) {
-    const msg = state.filtroActivo
-      ? `No hay resultados para "<strong>${sanitize(state.filtroActivo)}</strong>" en este mes.`
-      : 'No hay actividades cargadas para este mes.';
+    const hasFilters = state.filtroActivo || state.inspectorActivo;
+    const msg = hasFilters
+      ? 'No hay actividades que coincidan con los filtros elegidos.'
+      : state.mesActivo
+        ? 'No hay actividades cargadas para este mes.'
+        : 'Todavía no hay actividades cargadas para este nivel.';
     contenedor.innerHTML = `<div class="sin-actividades">${msg}</div>`;
     return;
   }
@@ -220,9 +283,7 @@ function cardGrado(actividad) {
       </div>
       <div class="grado-body">
         <h4>${sanitize(actividad.titulo)}</h4>
-        ${actividad.inspector_nombre
-          ? `<p class="grado-inspector">👤 ${sanitize(actividad.inspector_nombre)}</p>`
-          : ''}
+        <p class="grado-inspector">${actividad.inspector_nombre ? `👤 ${sanitize(actividad.inspector_nombre)} · ` : ''}${sanitize(mesLabel(mesKey(actividad.mes)))}</p>
       </div>
     </article>`;
 }
@@ -252,7 +313,7 @@ function mostrarDetalle(actividad) {
     <div class="foto-counter"><span class="foto-actual">1</span> / ${total}</div>` : '';
 
   body.innerHTML = `
-    <h3>${sanitize(actividad.titulo)}</h3>
+    <h3 id="detalle-titulo">${sanitize(actividad.titulo)}</h3>
     <p class="nivel-detalle-meta">
       ${sanitize(actividad.grado)} · ${sanitize(mesLabel(mesKey(actividad.mes)))}
       ${actividad.inspector_nombre ? ` · 👤 ${sanitize(actividad.inspector_nombre)}` : ''}

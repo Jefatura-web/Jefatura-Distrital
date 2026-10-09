@@ -122,7 +122,8 @@ body.admin-page{background:var(--bg);font-family:Inter, system-ui, Arial, sans-s
 }
 
 .admin-list-controls input,
-.admin-form .form-group select {
+.admin-form .form-group select,
+.admin-activity-filters select {
   width: 100%;
   min-height: 44px;
   padding: 10px 12px;
@@ -131,6 +132,29 @@ body.admin-page{background:var(--bg);font-family:Inter, system-ui, Arial, sans-s
   background: #fff;
   color: var(--gris-texto);
   font: inherit;
+}
+
+.admin-activity-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 280px) minmax(180px, 240px) minmax(240px, 1fr);
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.admin-activity-filters .admin-list-controls {
+  margin: 0;
+}
+
+.admin-activity-description {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 8px;
+  color: var(--gris-texto);
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .admin-list-controls input:focus-visible,
@@ -168,6 +192,10 @@ body.admin-page{background:var(--bg);font-family:Inter, system-ui, Arial, sans-s
 }
 
 @media (max-width: 768px) {
+  .admin-activity-filters {
+    grid-template-columns: 1fr;
+  }
+
   .admin-access-card {
     padding: 24px;
   }

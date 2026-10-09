@@ -25,13 +25,24 @@
     <!-- Resumen visual del año (barras por mes, clickeables) -->
     <div id="nivel-resumen"></div>
 
-    <!-- Buscador por grado, inspector o título -->
-    <div class="nivel-filtro-wrap">
-      <span class="nivel-filtro-icon">🔍</span>
-      <input type="search" id="nivel-filtro"
-             placeholder="Buscar por grado, inspector o título…"
-             autocomplete="off" aria-label="Filtrar actividades" />
+    <!-- Filtros de actividades -->
+    <div class="nivel-filtros" aria-label="Filtros de actividades">
+      <label class="nivel-filtro-wrap">
+        <span class="nivel-filtro-icon" aria-hidden="true">🔍</span>
+        <input type="search" id="nivel-filtro"
+               placeholder="Buscar por escuela, inspector, título o descripción…"
+               autocomplete="off" aria-label="Buscar actividades" />
+      </label>
+      <label class="nivel-inspector-filtro">
+        <span>Inspector/a</span>
+        <select id="nivel-filtro-inspector" aria-label="Filtrar por inspector">
+          <option value="">Todos los inspectores</option>
+        </select>
+      </label>
+      <button id="nivel-filtros-limpiar" class="nivel-limpiar-filtros" type="button">Limpiar filtros y fechas</button>
     </div>
+
+    <p id="nivel-resultados" class="nivel-resultados" aria-live="polite"></p>
 
     <!-- Pestañas de mes -->
     <div class="nivel-meses" id="nivel-meses" role="tablist" aria-label="Seleccionar mes"></div>

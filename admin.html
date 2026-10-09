@@ -51,7 +51,7 @@
 
             <div class="form-group">
               <label for="noticia-descripcion">Descripción breve</label>
-              <input id="noticia-descripcion" name="descripcion" type="text" placeholder="Máx. 160 caracteres" maxlength="160" />
+              <textarea id="noticia-descripcion" name="descripcion" rows="3" placeholder="Resumen de la noticia (máx. 300 caracteres)" maxlength="300"></textarea>
             </div>
 
             <div class="form-group">
@@ -83,17 +83,17 @@
             </div>
 
             <div class="form-group">
-              <label for="noticia-imagen">Imagen (opcional)</label>
+              <label for="noticia-imagen">Fotos de la noticia (opcional)</label>
               <div class="upload-field-wrap">
-                <input id="noticia-imagen" name="imagen_url" type="text" placeholder="URL o subí una foto →" />
+                <textarea id="noticia-imagen" name="imagenes" rows="3" placeholder="Pegá una URL por línea o elegí fotos desde tu computadora."></textarea>
               <label class="btn-upload-img" title="Subir imagen desde tu computadora">
-                📎 Elegir foto
-                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/heic,image/heif" class="upload-file-input"
-                         data-target="noticia-imagen" data-preview="preview-noticia-img" />
+                📎 Elegir fotos
+                <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/heic,image/heif" class="upload-file-input"
+                         data-target="noticia-imagen" data-mode="append" data-preview="preview-noticia-img" />
               </label>
             </div>
-            <div id="preview-noticia-img" class="upload-preview-thumb"></div>
-            <p id="upload-noticia-status" class="upload-status" role="status" aria-live="polite"></p>
+            <div id="preview-noticia-img" class="upload-preview-list" aria-live="polite"></div>
+            <p id="upload-noticia-status" class="upload-status" role="status" aria-live="polite">Podés seleccionar hasta 20 fotos por tanda; también podés pegar URLs.</p>
             </div>
 
             <div class="form-options">
@@ -124,7 +124,7 @@
           <p class="form-hint">Editá o eliminá las noticias desde aquí. Solo se muestran las noticias no eliminadas.</p>
         </div>
         <div class="admin-list-controls">
-          <label for="admin-news-search">Buscar en esta página</label>
+          <label for="admin-news-search">Buscar en todas las noticias</label>
           <input id="admin-news-search" type="search" placeholder="Título, categoría o contenido…" autocomplete="off" />
         </div>
         <div id="admin-noticias-panel" class="admin-noticias-panel">
@@ -135,6 +135,17 @@
           <span id="admin-news-page" aria-live="polite">Página 1</span>
           <button id="admin-news-next" class="btn-secondary" type="button" disabled>Siguientes →</button>
         </div>
+        <button id="admin-news-trash-toggle" class="btn-secondary admin-trash-toggle" type="button" aria-expanded="false">Papelera de noticias (48 h)</button>
+        <section id="admin-news-trash" class="admin-trash-section" hidden aria-label="Noticias eliminadas">
+          <h3>Noticias eliminadas recientemente</h3>
+          <p>Se eliminan definitivamente al cumplirse 48 horas. Podés restaurarlas antes de ese momento.</p>
+          <div id="admin-news-trash-panel" class="admin-noticias-panel"></div>
+          <div class="admin-pagination">
+            <button id="admin-news-trash-prev" class="btn-secondary" type="button" disabled>← Anteriores</button>
+            <span id="admin-news-trash-page" aria-live="polite">Papelera · página 1</span>
+            <button id="admin-news-trash-next" class="btn-secondary" type="button" disabled>Siguientes →</button>
+          </div>
+        </section>
       </section>
 
       <!-- VISTA PREVIA -->
@@ -264,7 +275,7 @@
         </select>
       </div>
       <div class="admin-list-controls">
-        <label for="admin-activity-search">Buscar en esta página</label>
+        <label for="admin-activity-search">Buscar en todas las actividades</label>
         <input id="admin-activity-search" type="search" placeholder="Título, grado o inspector…" autocomplete="off" />
       </div>
       <div id="admin-actividades-panel" class="admin-noticias-panel">
@@ -275,6 +286,17 @@
         <span id="admin-activity-page" aria-live="polite">Página 1</span>
         <button id="admin-activity-next" class="btn-secondary" type="button" disabled>Siguientes →</button>
       </div>
+      <button id="admin-activity-trash-toggle" class="btn-secondary admin-trash-toggle" type="button" aria-expanded="false">Papelera de actividades (48 h)</button>
+      <section id="admin-activity-trash" class="admin-trash-section" hidden aria-label="Actividades eliminadas">
+        <h3>Actividades eliminadas recientemente</h3>
+        <p>Se eliminan definitivamente al cumplirse 48 horas. Podés restaurarlas antes de ese momento.</p>
+        <div id="admin-activity-trash-panel" class="admin-noticias-panel"></div>
+        <div class="admin-pagination">
+          <button id="admin-activity-trash-prev" class="btn-secondary" type="button" disabled>← Anteriores</button>
+          <span id="admin-activity-trash-page" aria-live="polite">Papelera · página 1</span>
+          <button id="admin-activity-trash-next" class="btn-secondary" type="button" disabled>Siguientes →</button>
+        </div>
+      </section>
     </section>
   </main>
 

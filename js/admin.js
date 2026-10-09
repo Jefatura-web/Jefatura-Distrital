@@ -60,7 +60,7 @@ function initLivePreview() {
     const catId       = parseInt(form.querySelector('#noticia-categoria')?.value || '1', 10);
     const destacada   = !!form.querySelector('#noticia-destacada')?.checked;
     const publicada   = !!form.querySelector('#noticia-publicada')?.checked;
-    const imagenUrl   = form.querySelector('#noticia-imagen')?.value.trim()    || '';
+    const imagenUrl   = form.querySelector('#noticia-imagen')?.value.split(/\r?\n/).map(url => url.trim()).filter(Boolean)[0] || '';
 
     const cat       = CATEGORIAS[catId] || { nombre: 'Sin categoría', color: 'azul' };
     const estado    = !publicada ? 'Borrador' : (destacada ? '📌 Destacada' : '✅ Publicada');
@@ -117,7 +117,7 @@ function resetForm() {
   if (title) title.textContent = 'Crear nueva noticia';
   const button = getElement('#form-submit-button');
   if (button) button.textContent = 'Crear noticia';
-  renderSinglePreview('');
+  renderNewsPreviews();
   const status = getElement('#upload-noticia-status');
   if (status) status.textContent = '';
 }
@@ -146,7 +146,8 @@ async function handleFormSubmit(event, onSuccess) {
     texto:       formData.get('texto'),
     categoria_id: parseInt(formData.get('categoria_id'), 10),
     fecha:       formData.get('fecha'),
-    imagen_url:  formData.get('imagen_url'),
+    imagenes:    parseImagenes(formData.get('imagenes')),
+    imagen_url:  parseImagenes(formData.get('imagenes'))[0] || null,
     destacada:   formData.get('destacada') === 'on',
     publicada:   formData.get('publicada') === 'on'
   };
@@ -248,11 +249,12 @@ const ADMIN_LIST_PAGE_SIZE = 20;
 let adminNewsPage = 1;
 let adminNewsHasNext = false;
 let adminNewsRecords = [];
+let adminNewsRequestSequence = 0;
 
 function formatNewsCard(noticia) {
   const cat    = sanitize(noticia.categoria || 'General');
   const titulo = sanitize(noticia.titulo    || 'Sin título');
-  const texto  = sanitize(String(noticia.texto || '').substring(0, 170));
+  const texto  = sanitize(String(noticia.descripcion || noticia.texto || '').substring(0, 170));
   const fecha  = sanitize(String(noticia.fecha  || ''));
   const imagen = sanitize(noticia.imagen || noticia.imagen_url || '');
   const imgHtml = imagen
@@ -279,20 +281,16 @@ function renderAdminNoticias() {
   const panel = getElement('#admin-noticias-panel');
   if (!panel) return;
   const query = (getElement('#admin-news-search')?.value || '').trim().toLocaleLowerCase('es-AR');
-  const filtered = adminNewsRecords.filter(noticia =>
-    [noticia.titulo, noticia.categoria, noticia.texto, noticia.descripcion]
-      .some(value => String(value || '').toLocaleLowerCase('es-AR').includes(query))
-  );
-  panel.innerHTML = filtered.length
-    ? filtered.map(formatNewsCard).join('')
-    : `<div class="admin-empty">${query ? 'No hay coincidencias en esta página.' : 'No hay noticias disponibles.'}</div>`;
+  panel.innerHTML = adminNewsRecords.length
+    ? adminNewsRecords.map(formatNewsCard).join('')
+    : `<div class="admin-empty">${query ? 'No se encontraron noticias.' : 'No hay noticias disponibles.'}</div>`;
   attachCardEvents();
   const previous = getElement('#admin-news-prev');
   const next = getElement('#admin-news-next');
   const page = getElement('#admin-news-page');
   if (previous) previous.disabled = adminNewsPage <= 1;
   if (next) next.disabled = !adminNewsHasNext;
-  if (page) page.textContent = `Página ${adminNewsPage} · ${filtered.length} resultado${filtered.length === 1 ? '' : 's'}`;
+  if (page) page.textContent = `Página ${adminNewsPage} · ${adminNewsRecords.length} resultado${adminNewsRecords.length === 1 ? '' : 's'}`;
 }
 
 async function loadAdminNoticias() {
@@ -307,7 +305,13 @@ async function loadAdminNoticias() {
   }
 
   try {
-    const noticias = await apiFetch(`/noticias/admin?page=${adminNewsPage}&limit=${ADMIN_LIST_PAGE_SIZE + 1}`, {
+    const params = new URLSearchParams({
+      page: String(adminNewsPage),
+      limit: String(ADMIN_LIST_PAGE_SIZE + 1)
+    });
+    const search = getElement('#admin-news-search')?.value.trim();
+    if (search) params.set('search', search);
+    const noticias = await apiFetch(`/noticias/admin?${params}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!Array.isArray(noticias)) throw new Error('Formato de respuesta inválido');
@@ -348,8 +352,8 @@ async function handleEdit(id) {
     getElement('#noticia-texto').value       = noticia.texto      || '';
     getElement('#noticia-categoria').value   = noticia.categoria_id || '';
     getElement('#noticia-fecha').value       = noticia.fecha      || '';
-    getElement('#noticia-imagen').value      = noticia.imagen     || '';
-    renderSinglePreview(noticia.imagen || '');
+    getElement('#noticia-imagen').value      = (noticia.imagenes || (noticia.imagen ? [noticia.imagen] : [])).join('\n');
+    renderNewsPreviews();
     getElement('#noticia-destacada').checked = !!noticia.destacada;
     getElement('#noticia-publicada').checked = noticia.publicada === 1 || noticia.publicada === true;
     getElement('#form-crear-noticia').querySelectorAll('input, textarea, select').forEach(field => {
@@ -386,6 +390,7 @@ function handleDelete(id, card) {
       await cargarNoticias();
       renderNoticiasList();
       await loadAdminNoticias();
+      if (!getElement('#admin-news-trash')?.hidden) await loadDeletedItems('news');
     } catch (error) {
       handleError(error, 'handleDelete');
       showAppAlert('No se pudo eliminar la noticia.', 'error');
@@ -431,7 +436,14 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initAdminListControls() {
-  getElement('#admin-news-search')?.addEventListener('input', renderAdminNoticias);
+  let newsSearchTimer;
+  getElement('#admin-news-search')?.addEventListener('input', () => {
+    clearTimeout(newsSearchTimer);
+    newsSearchTimer = setTimeout(() => {
+      adminNewsPage = 1;
+      loadAdminNoticias();
+    }, 250);
+  });
   getElement('#admin-news-prev')?.addEventListener('click', async () => {
     if (adminNewsPage <= 1) return;
     adminNewsPage -= 1;
@@ -442,7 +454,14 @@ function initAdminListControls() {
     adminNewsPage += 1;
     await loadAdminNoticias();
   });
-  getElement('#admin-activity-search')?.addEventListener('input', renderAdminActividades);
+  let activitySearchTimer;
+  getElement('#admin-activity-search')?.addEventListener('input', () => {
+    clearTimeout(activitySearchTimer);
+    activitySearchTimer = setTimeout(() => {
+      adminActivityPage = 1;
+      loadAdminActividades();
+    }, 250);
+  });
   getElement('#admin-activity-prev')?.addEventListener('click', async () => {
     if (adminActivityPage <= 1) return;
     adminActivityPage -= 1;
@@ -453,6 +472,138 @@ function initAdminListControls() {
     adminActivityPage += 1;
     await loadAdminActividades();
   });
+  initTrashControls('news');
+  initTrashControls('activity');
+}
+
+const trashState = {
+  news: { page: 1, hasNext: false, records: [] },
+  activity: { page: 1, hasNext: false, records: [] }
+};
+
+function initTrashControls(type) {
+  const prefix = type === 'news' ? 'admin-news' : 'admin-activity';
+  const button = getElement(`#${prefix}-trash-toggle`);
+  const section = getElement(`#${prefix}-trash`);
+  if (!button || !section) return;
+
+  button.addEventListener('click', async () => {
+    section.hidden = !section.hidden;
+    button.setAttribute('aria-expanded', String(!section.hidden));
+    if (!section.hidden) await loadDeletedItems(type);
+  });
+  getElement(`#${prefix}-trash-prev`)?.addEventListener('click', async () => {
+    if (trashState[type].page <= 1) return;
+    trashState[type].page -= 1;
+    await loadDeletedItems(type);
+  });
+  getElement(`#${prefix}-trash-next`)?.addEventListener('click', async () => {
+    if (!trashState[type].hasNext) return;
+    trashState[type].page += 1;
+    await loadDeletedItems(type);
+  });
+}
+
+function formatTrashCard(type, item) {
+  const title = sanitize(item.titulo || 'Sin título');
+  const image = sanitize(type === 'news'
+    ? (item.imagenes?.[0] || item.imagen || '')
+    : (item.imagenes?.[0] || ''));
+  const deletedAt = new Date(item.deleted_at);
+  const expiresAt = new Date(deletedAt.getTime() + 48 * 60 * 60 * 1000);
+  const expiration = Number.isNaN(expiresAt.getTime())
+    ? 'dentro de las 48 horas'
+    : expiresAt.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+  const metadata = type === 'news'
+    ? `${sanitize(item.categoria || 'Noticia')} · ${sanitize(String(item.fecha || '').substring(0, 10))}`
+    : `${sanitize(item.nivel || '')} · ${sanitize(item.grado || '')} · ${sanitize(String(item.mes || '').substring(0, 7))}`;
+  const imageHtml = image
+    ? `<img src="${image}" alt="" loading="lazy" onerror="this.onerror=null;this.src='logo_jefatura.jpg'">`
+    : '<div class="pn-imagen-placeholder">🖼️</div>';
+
+  return `<article class="admin-news-card" data-id="${sanitize(String(item.id))}">
+    <div class="admin-news-image">${imageHtml}</div>
+    <div class="admin-news-content">
+      <div class="admin-news-category">${metadata}</div>
+      <h3>${title}</h3>
+      <p>Eliminada. Recuperable hasta ${sanitize(expiration)}.</p>
+    </div>
+    <div class="admin-news-actions">
+      <button type="button" class="btn-secondary admin-restore-btn">Restaurar</button>
+    </div>
+  </article>`;
+}
+
+function renderDeletedItems(type) {
+  const prefix = type === 'news' ? 'admin-news' : 'admin-activity';
+  const panel = getElement(`#${prefix}-trash-panel`);
+  const state = trashState[type];
+  if (!panel) return;
+
+  panel.innerHTML = state.records.length
+    ? state.records.map(item => formatTrashCard(type, item)).join('')
+    : '<div class="admin-empty">La papelera está vacía.</div>';
+  panel.querySelectorAll('.admin-restore-btn').forEach(button => {
+    button.addEventListener('click', () => restoreDeletedItem(type, button.closest('[data-id]')?.dataset.id));
+  });
+  const previous = getElement(`#${prefix}-trash-prev`);
+  const next = getElement(`#${prefix}-trash-next`);
+  const page = getElement(`#${prefix}-trash-page`);
+  if (previous) previous.disabled = state.page <= 1;
+  if (next) next.disabled = !state.hasNext;
+  if (page) page.textContent = `Papelera · página ${state.page}`;
+}
+
+async function loadDeletedItems(type) {
+  const prefix = type === 'news' ? 'admin-news' : 'admin-activity';
+  const panel = getElement(`#${prefix}-trash-panel`);
+  const state = trashState[type];
+  if (!panel) return;
+  panel.innerHTML = '<div class="admin-loading">Cargando papelera…</div>';
+  const params = new URLSearchParams({
+    page: String(state.page),
+    limit: String(ADMIN_LIST_PAGE_SIZE + 1)
+  });
+  const path = type === 'news' ? '/noticias/admin/deleted' : '/actividades/admin/deleted';
+
+  try {
+    const records = await apiFetch(`${path}?${params}`);
+    if (!Array.isArray(records)) throw new Error('Formato de respuesta de papelera inválido');
+    if (!records.length && state.page > 1) {
+      state.page -= 1;
+      await loadDeletedItems(type);
+      return;
+    }
+    state.hasNext = records.length > ADMIN_LIST_PAGE_SIZE;
+    state.records = records.slice(0, ADMIN_LIST_PAGE_SIZE);
+    renderDeletedItems(type);
+  } catch (error) {
+    handleError(error, `loadDeletedItems.${type}`);
+    panel.innerHTML = '<div class="admin-error">No se pudo cargar la papelera.</div>';
+  }
+}
+
+async function restoreDeletedItem(type, id) {
+  if (!id) return;
+  const path = type === 'news'
+    ? `/noticias/admin/${encodeURIComponent(id)}/restore`
+    : `/actividades/admin/${encodeURIComponent(id)}/restore`;
+  try {
+    await apiFetch(path, { method: 'POST' });
+    showAppAlert(type === 'news' ? 'Noticia restaurada.' : 'Actividad restaurada.', 'success');
+    await Promise.all([
+      loadDeletedItems(type),
+      type === 'news' ? loadAdminNoticias() : loadAdminActividades()
+    ]);
+    if (type === 'news') {
+      await cargarNoticias();
+      renderNoticiasList();
+    }
+  } catch (error) {
+    handleError(error, `restoreDeletedItem.${type}`);
+    showAppAlert(error?.body?.error || 'No se pudo restaurar el elemento.', 'error');
+    await loadDeletedItems(type);
+  }
 }
 
 function initAdminAccessGate() {
@@ -667,6 +818,7 @@ async function handleActividadSubmit(event) {
 let adminActivityPage = 1;
 let adminActivityHasNext = false;
 let adminActivityRecords = [];
+let adminActivityRequestSequence = 0;
 
 function formatActividadCard(actividad) {
   const nivel = sanitize(actividad.nivel || '');
@@ -698,20 +850,16 @@ function renderAdminActividades() {
   const panel = getElement('#admin-actividades-panel');
   if (!panel) return;
   const query = (getElement('#admin-activity-search')?.value || '').trim().toLocaleLowerCase('es-AR');
-  const filtered = adminActivityRecords.filter(actividad =>
-    [actividad.nivel, actividad.grado, actividad.titulo, actividad.inspector_nombre, actividad.descripcion]
-      .some(value => String(value || '').toLocaleLowerCase('es-AR').includes(query))
-  );
-  panel.innerHTML = filtered.length
-    ? filtered.map(formatActividadCard).join('')
-    : `<div class="admin-empty">${query ? 'No hay coincidencias en esta página.' : 'No hay actividades cargadas.'}</div>`;
+  panel.innerHTML = adminActivityRecords.length
+    ? adminActivityRecords.map(formatActividadCard).join('')
+    : `<div class="admin-empty">${query ? 'No se encontraron actividades.' : 'No hay actividades cargadas.'}</div>`;
   attachActividadCardEvents(adminActivityRecords);
   const previous = getElement('#admin-activity-prev');
   const next = getElement('#admin-activity-next');
   const page = getElement('#admin-activity-page');
   if (previous) previous.disabled = adminActivityPage <= 1;
   if (next) next.disabled = !adminActivityHasNext;
-  if (page) page.textContent = `Página ${adminActivityPage} · ${filtered.length} resultado${filtered.length === 1 ? '' : 's'}`;
+  if (page) page.textContent = `Página ${adminActivityPage} · ${adminActivityRecords.length} resultado${adminActivityRecords.length === 1 ? '' : 's'}`;
 }
 
 async function loadAdminActividades() {
@@ -733,6 +881,8 @@ async function loadAdminActividades() {
       limit: String(ADMIN_LIST_PAGE_SIZE + 1)
     });
     if (nivelFiltro) params.set('nivel', nivelFiltro);
+    const search = getElement('#admin-activity-search')?.value.trim();
+    if (search) params.set('search', search);
     const actividades = await apiFetch(`/actividades/admin/list?${params}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -797,6 +947,7 @@ function handleActividadDelete(id, card) {
       setTimeout(() => card.remove(), 350);
       showAppAlert('Actividad eliminada.', 'success');
       await loadAdminActividades();
+      if (!getElement('#admin-activity-trash')?.hidden) await loadDeletedItems('activity');
     } catch (error) {
       handleError(error, 'handleActividadDelete');
       showAppAlert('No se pudo eliminar la actividad.', 'error');
@@ -814,9 +965,9 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const MAX_FILES_PER_BATCH = 20;
 
 function getUploadStatus(input) {
-  return input.dataset.mode === 'append'
-    ? getElement('#upload-actividad-status')
-    : getElement('#upload-noticia-status');
+  return input.dataset.target === 'noticia-imagen'
+    ? getElement('#upload-noticia-status')
+    : getElement('#upload-actividad-status');
 }
 
 function showUploadStatus(input, message, isError = false) {
@@ -826,16 +977,32 @@ function showUploadStatus(input, message, isError = false) {
   status.classList.toggle('upload-status-error', isError);
 }
 
-function renderSinglePreview(url) {
+function renderNewsPreviews() {
   const preview = getElement('#preview-noticia-img');
-  if (!preview) return;
+  const textarea = getElement('#noticia-imagen');
+  if (!preview || !textarea) return;
   preview.replaceChildren();
-  if (!url) return;
-  const image = document.createElement('img');
-  image.src = url;
-  image.alt = 'Vista previa de la foto seleccionada';
-  image.loading = 'lazy';
-  preview.appendChild(image);
+  parseImagenes(textarea.value).forEach((url, index) => {
+    const item = document.createElement('div');
+    item.className = 'upload-preview-item';
+    const image = document.createElement('img');
+    image.src = url;
+    image.alt = `Vista previa de foto ${index + 1}`;
+    image.loading = 'lazy';
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'upload-preview-remove';
+    remove.setAttribute('aria-label', `Quitar foto ${index + 1}`);
+    remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      const urls = parseImagenes(textarea.value);
+      urls.splice(index, 1);
+      textarea.value = urls.join('\n');
+      renderNewsPreviews();
+    });
+    item.append(image, remove);
+    preview.appendChild(item);
+  });
 }
 
 function renderActivityPreviews() {
@@ -917,10 +1084,11 @@ async function handleImageSelection(input) {
       uploadedCount += 1;
       if (input.dataset.mode === 'append') {
         target.value = [...parseImagenes(target.value), url].join('\n');
-        renderActivityPreviews();
+        if (input.dataset.target === 'noticia-imagen') renderNewsPreviews();
+        else renderActivityPreviews();
       } else {
         target.value = url;
-        renderSinglePreview(url);
+        renderNewsPreviews();
       }
     }
     showUploadStatus(input, `${uploadedCount} foto${uploadedCount === 1 ? '' : 's'} subida${uploadedCount === 1 ? '' : 's'} correctamente.`);
@@ -940,6 +1108,7 @@ function initImageUploads() {
     input.addEventListener('change', () => handleImageSelection(input));
   });
   getElement('#actividad-imagenes')?.addEventListener('input', renderActivityPreviews);
-  getElement('#noticia-imagen')?.addEventListener('input', event => renderSinglePreview(event.target.value.trim()));
+  getElement('#noticia-imagen')?.addEventListener('input', renderNewsPreviews);
   renderActivityPreviews();
+  renderNewsPreviews();
 }

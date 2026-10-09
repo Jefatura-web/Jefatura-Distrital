@@ -14,6 +14,7 @@ const corsOrigins = String(process.env.CORS_ORIGIN || '*')
 module.exports = {
   port: process.env.PORT || 3000,
   env:  process.env.NODE_ENV || 'development',
+  siteUrl: String(process.env.SITE_URL || '').trim().replace(/\/+$/, ''),
 
   database: {
     host:     process.env.DB_HOST     || 'localhost',

@@ -6,8 +6,7 @@
   "scripts": {
     "start": "node js/server.js",
     "dev": "node js/server.js",
-    "diagnose": "node diagnostico.js",
-    "test": "node --test"
+    "diagnose": "node diagnostico.js"
   },
   "keywords": [
     "jefatura",

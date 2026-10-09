@@ -21,6 +21,9 @@ function normalizeNoticia(noticia) {
     ...noticia,
     fecha: normalizeFecha(noticia.fecha),
     imagen: noticia.imagen || noticia.imagen_url || '',
+    imagenes: Array.isArray(noticia.imagenes) && noticia.imagenes.length
+      ? noticia.imagenes
+      : (noticia.imagen || noticia.imagen_url ? [noticia.imagen || noticia.imagen_url] : []),
     categoria: noticia.categoria || '',
     destacada: noticia.destacada === 1 || noticia.destacada === '1' || noticia.destacada === true,
     publicada: noticia.publicada === 1 || noticia.publicada === '1' || noticia.publicada === true
@@ -36,6 +39,10 @@ const featuredOverride = {
   imagen: 'proyecto_distrital.jpg',
   destacada: 1
 };
+
+function newsUrl(noticia) {
+  return noticia.slug ? `/noticia/${encodeURIComponent(noticia.slug)}` : '#';
+}
 
 export async function cargarNoticias() {
   const cacheKey = 'jefatura_noticias_v1';
@@ -121,16 +128,17 @@ function renderNoticiaDestacada() {
   const imagenHTML = imageSrc
     ? `<img src="${imageSrc}" alt="Imagen: ${sanitize(destacada.titulo)}" loading="lazy" onerror="this.onerror=null;this.src='logo_jefatura.jpg'" />`
     : `<div class="nd-imagen-emoji" aria-label="Icono de educación">🎓</div>`;
+  const summary = destacada.descripcion || String(destacada.texto || '').substring(0, 240);
 
   noticiaDestacada.innerHTML = `
     <div class="nd-imagen">${imagenHTML}</div>
     <div class="nd-body">
       <div class="nd-tag" aria-label="Etiqueta: ${sanitize(destacada.categoria || 'Noticia')}">📌 ${sanitize(destacada.categoria || 'Noticia')}</div>
       <h3>${sanitize(destacada.titulo)}</h3>
-      <p>${sanitize(destacada.texto)}</p>
+      <p>${sanitize(summary)}</p>
       <div class="nd-meta">
         <time class="nd-fecha" datetime="${sanitize(destacada.fecha)}" aria-label="Fecha: ${sanitize(destacada.fecha)}">📅 ${sanitize(destacada.fecha)}</time>
-        <a href="#" class="leer-mas" aria-label="Leer noticia completa">Leer más →</a>
+        <a href="${sanitize(newsUrl(destacada))}" class="leer-mas" aria-label="Leer noticia completa">Leer más →</a>
       </div>
     </div>`;
 }
@@ -177,11 +185,8 @@ function renderNoticiasList(noticias = getAvailableNoticias().slice(0, 8)) {
   noticias.forEach((noticia, i) => {
     const card = document.createElement('article');
     card.className = 'card-noticia';
-    card.tabIndex = 0;
-    card.setAttribute('role', 'button');
-    card.setAttribute('aria-label', `Leer: ${sanitize(noticia.titulo)}`);
     const color  = COLORES[i % COLORES.length];
-    const imgSrc = noticia.imagen || noticia.imagen_url || '';
+    const imgSrc = noticia.imagenes?.[0] || noticia.imagen || noticia.imagen_url || '';
     const imgHtml = imgSrc
       ? `<img src="${sanitize(imgSrc)}" alt="${sanitize(noticia.titulo)}" loading="lazy"
               onerror="this.onerror=null;this.parentNode.classList.add('cn-imagen-fallback');this.remove()">`
@@ -190,16 +195,13 @@ function renderNoticiasList(noticias = getAvailableNoticias().slice(0, 8)) {
       <div class="cn-imagen ${color}">${imgHtml}<span class="cn-emoji" aria-hidden="true">📰</span></div>
       <div class="cn-body">
         <div class="cn-categoria">${sanitize(noticia.categoria || 'General')}</div>
-        <h4>${sanitize(noticia.titulo)}</h4>
-        <p>${sanitize((noticia.texto || '').substring(0, 110))}…</p>
+        <h4><a href="${sanitize(newsUrl(noticia))}">${sanitize(noticia.titulo)}</a></h4>
+        <p>${sanitize(String(noticia.descripcion || noticia.texto || '').substring(0, 140))}…</p>
         <div class="cn-footer">
           <time datetime="${sanitize(noticia.fecha)}">📅 ${sanitize(noticia.fecha)}</time>
-          <span class="cn-leer">Leer →</span>
+          <a class="cn-leer" href="${sanitize(newsUrl(noticia))}">Leer más →</a>
         </div>
       </div>`;
-    const open = () => mostrarNoticiaModal(noticia);
-    card.addEventListener('click', open);
-    card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
     grid.appendChild(card);
   });
 }
@@ -294,12 +296,13 @@ export function mostrarNoticiaModal(noticia) {
   const body  = getElement('#noticia-modal-body');
   if (!modal || !body) return;
 
-  const imgSrc = noticia.imagen || noticia.imagen_url || '';
-  const imgHtml = imgSrc
-    ? `<div class="nm-imagen">
-         <img src="${sanitize(imgSrc)}" alt="${sanitize(noticia.titulo)}"
-              onerror="this.onerror=null;this.parentNode.style.display='none'">
-       </div>`
+  const images = noticia.imagenes?.length
+    ? noticia.imagenes
+    : [noticia.imagen || noticia.imagen_url].filter(Boolean);
+  const imgHtml = images.length
+    ? `<div class="nm-galeria">${images.map((url, index) =>
+      `<img src="${sanitize(url)}" alt="${sanitize(noticia.titulo)} — foto ${index + 1}"${index ? ' loading="lazy"' : ''} onerror="this.remove()">`
+    ).join('')}</div>`
     : '';
 
   body.innerHTML = `

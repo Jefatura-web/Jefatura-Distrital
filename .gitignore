@@ -28,6 +28,7 @@ logs/
 tmp/
 temp/
 *.tmp
+/test/
 
 # Bases de datos locales
 *.db

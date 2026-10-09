@@ -61,6 +61,15 @@ CREATE TABLE IF NOT EXISTS
     FULLTEXT INDEX `ft_descripcion` (`descripcion`)
   );
 
+CREATE TABLE IF NOT EXISTS noticias_imagenes (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  noticia_id  INT NOT NULL,
+  imagen_url  VARCHAR(500) NOT NULL,
+  orden       INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (noticia_id) REFERENCES noticias(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_noticia_imagenes_orden (noticia_id, orden)
+);
+
 -- ============================================================
 -- TABLA: auditoria_noticias (opcional)
 -- ============================================================

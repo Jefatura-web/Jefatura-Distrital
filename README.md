@@ -77,6 +77,7 @@ npm start
 | `CLOUDINARY_API_KEY` | — | Clave API de Cloudinary |
 | `CLOUDINARY_API_SECRET` | — | Secreto API de Cloudinary |
 | `CORS_ORIGIN` | `*`                 | URL de Render: `https://jefatura-quilmes.onrender.com` (varias URLs, separadas por comas) |
+| `SITE_URL`    | —                   | URL pública canónica, por ejemplo `https://jefatura-quilmes.onrender.com` |
 | `NODE_ENV`    | `development`       | `production`                                   |
 
 El panel cambia el token por una cookie de sesión `HttpOnly`, `Secure` en producción y `SameSite=Strict`. La sesión vence a las dos horas y se invalida al cerrar sesión o al reiniciarse el servidor. La sesión se guarda en memoria; mantener una sola instancia de servidor mientras se use este almacenamiento. Se permiten cinco intentos fallidos de acceso por IP cada 15 minutos.
@@ -90,6 +91,25 @@ El panel cambia el token por una cookie de sesión `HttpOnly`, `Secure` en produ
 1. Ir a [tidbcloud.com](https://tidbcloud.com) → crear cuenta → **Create Cluster** → elegir **Serverless**.
 2. Una vez creado el cluster, ir a **Connect** → copiar los datos de conexión (host, user, password).
 3. Abrir el **SQL Editor** del cluster y ejecutar el contenido de `Base_Jefatura.sql`.
+
+Si la base ya existe, ejecutar este SQL en el editor de TiDB **antes de desplegar**. Crea la galería y copia las imágenes que ya estaban guardadas en las noticias:
+
+```sql
+CREATE TABLE IF NOT EXISTS noticias_imagenes (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  noticia_id  INT NOT NULL,
+  imagen_url  VARCHAR(500) NOT NULL,
+  orden       INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (noticia_id) REFERENCES noticias(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_noticia_imagenes_orden (noticia_id, orden)
+);
+
+INSERT IGNORE INTO noticias_imagenes (noticia_id, imagen_url, orden)
+SELECT id, imagen_url, 0
+FROM noticias
+WHERE imagen_url IS NOT NULL
+  AND imagen_url <> '';
+```
 
 ### 3.2 Subir el proyecto a GitHub
 
@@ -127,6 +147,9 @@ El servicio queda disponible en `https://jefatura-quilmes.onrender.com`.
 ### Opción A — Panel web
 
 Ir a `https://tu-sitio.onrender.com/admin.html`, ingresar el `ADMIN_TOKEN` y usar el formulario.
+La búsqueda del panel consulta todos los registros, no solo la página visible. Los elementos eliminados quedan en la papelera durante 48 horas y luego el servidor los elimina definitivamente.
+
+Cada noticia publicada tiene una página completa en `/noticia/<slug>`, con metadatos para buscadores y redes. El `sitemap.xml` se genera con noticias publicadas; configurar `SITE_URL` para que sus enlaces canónicos usen el dominio público correcto.
 
 ### Opción B — API REST
 
@@ -197,13 +220,16 @@ curl -X POST https://tu-sitio.onrender.com/noticias \
 | POST   | `/noticias`                   | Cookie | Crear noticia                 |
 | PUT    | `/noticias/:id`               | Cookie | Actualizar noticia            |
 | DELETE | `/noticias/:id`               | Cookie | Eliminar noticia (soft delete) |
+| GET    | `/noticias/admin/deleted`     | Cookie | Ver papelera de noticias (48 h) |
+| POST   | `/noticias/admin/:id/restore` | Cookie | Restaurar noticia dentro de 48 h |
+| GET    | `/actividades/admin/deleted`  | Cookie | Ver papelera de actividades (48 h) |
+| POST   | `/actividades/admin/:id/restore` | Cookie | Restaurar actividad dentro de 48 h |
+| GET    | `/noticia/:slug`              | — | Noticia completa con metadatos SEO |
+| GET    | `/sitemap.xml`                | — | Sitemap dinámico de noticias publicadas |
 
 ---
 
 ## 6. Problemas frecuentes
-
-**Ejecutar pruebas automatizadas**
-: `npm test` ejecuta las pruebas de autenticación, vencimiento de sesión, límite de intentos y validación del formato real de imágenes.
 
 **Error de SSL al conectar a TiDB**
 : Verificar que `NODE_ENV=production` esté seteado en Render. El SSL se activa solo en producción.

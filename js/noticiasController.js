@@ -27,6 +27,46 @@ function setDatabase(database) {
   db = database;
 }
 
+function attachImagenes(noticias, callback) {
+  if (!noticias || noticias.length === 0) return callback(null, noticias);
+
+  const ids = noticias.map(noticia => noticia.id);
+  db.query(
+    'SELECT noticia_id, imagen_url FROM noticias_imagenes WHERE noticia_id IN (?) ORDER BY noticia_id, orden ASC, id ASC',
+    [ids],
+    (err, rows) => {
+      if (err) return callback(err);
+      const imagesByNews = new Map();
+      (rows || []).forEach(row => {
+        if (!imagesByNews.has(row.noticia_id)) imagesByNews.set(row.noticia_id, []);
+        imagesByNews.get(row.noticia_id).push(row.imagen_url);
+      });
+      callback(null, noticias.map(noticia => ({
+        ...noticia,
+        imagenes: imagesByNews.get(noticia.id) || (noticia.imagen ? [noticia.imagen] : [])
+      })));
+    }
+  );
+}
+
+function normalizeNewsImages(images, legacyImageUrl) {
+  const source = Array.isArray(images) ? images : (legacyImageUrl ? [legacyImageUrl] : []);
+  return source.map(url => String(url || '').trim()).filter(Boolean);
+}
+
+function insertNewsImages(noticiaId, images, callback) {
+  if (images.length === 0) return callback(null);
+  const values = images.map((url, order) => [noticiaId, url.substring(0, 500), order]);
+  db.query('INSERT INTO noticias_imagenes (noticia_id, imagen_url, orden) VALUES ?', [values], callback);
+}
+
+function replaceNewsImages(noticiaId, images, callback) {
+  db.query('DELETE FROM noticias_imagenes WHERE noticia_id = ?', [noticiaId], err => {
+    if (err) return callback(err);
+    insertNewsImages(noticiaId, images, callback);
+  });
+}
+
 // Caché de categorías
 async function getCategoriasCache() {
   const now = Date.now();
@@ -85,6 +125,117 @@ function sanitizeHTML(str) {
     .replace(/'/g, '&#039;');
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function absoluteImageUrl(value, siteUrl) {
+  const image = String(value || '').trim();
+  if (!image) return '';
+  try {
+    const parsed = new URL(image, siteUrl);
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : '';
+  } catch {
+    return '';
+  }
+}
+
+function getDescription(noticia) {
+  const description = String(noticia.descripcion || noticia.texto || '').replace(/\s+/g, ' ').trim();
+  return description.substring(0, 300);
+}
+
+function renderArticlePage(noticia, images, canonicalUrl, siteName = 'Jefatura Distrital Quilmes') {
+  const title = escapeHtml(noticia.titulo);
+  const description = escapeHtml(getDescription(noticia));
+  const safeCanonicalUrl = escapeHtml(canonicalUrl);
+  const safeSiteName = escapeHtml(siteName);
+  const siteOrigin = new URL(canonicalUrl).origin;
+  const imageUrls = [...new Set((images || [])
+    .map(image => absoluteImageUrl(image, siteOrigin))
+    .filter(Boolean))];
+  const cover = imageUrls[0] || '';
+  const date = String(noticia.fecha || '').substring(0, 10);
+  const paragraphs = String(noticia.texto || '')
+    .split(/\n\s*\n/)
+    .map(paragraph => paragraph.trim())
+    .filter(Boolean)
+    .map(paragraph => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
+    .join('\n');
+  const gallery = imageUrls.length
+    ? `<div class="article-gallery" aria-label="Galería de fotos">${imageUrls.map((url, index) =>
+      `<figure><img src="${escapeHtml(url)}" alt="${title} — foto ${index + 1}"${index ? ' loading="lazy"' : ''}></figure>`
+    ).join('')}</div>`
+    : '';
+  const structuredData = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'NewsArticle',
+    headline: String(noticia.titulo || ''),
+    description: getDescription(noticia),
+    datePublished: date,
+    dateModified: String(noticia.updated_at || noticia.fecha || '').substring(0, 10),
+    mainEntityOfPage: canonicalUrl,
+    image: imageUrls,
+    publisher: { '@type': 'Organization', name: siteName }
+  }).replace(/</g, '\\u003c');
+
+  return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title} | ${safeSiteName}</title>
+  <meta name="description" content="${description}">
+  <link rel="canonical" href="${safeCanonicalUrl}">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="${safeSiteName}">
+  <meta property="og:title" content="${title}">
+  <meta property="og:description" content="${description}">
+  <meta property="og:url" content="${safeCanonicalUrl}">
+  ${cover ? `<meta property="og:image" content="${escapeHtml(cover)}">` : ''}
+  <meta name="twitter:card" content="${cover ? 'summary_large_image' : 'summary'}">
+  <meta name="twitter:title" content="${title}">
+  <meta name="twitter:description" content="${description}">
+  ${cover ? `<meta name="twitter:image" content="${escapeHtml(cover)}">` : ''}
+  <script type="application/ld+json">${structuredData}</script>
+  <link rel="stylesheet" href="/css/estilo.css">
+</head>
+<body class="article-page">
+  <header class="article-header">
+    <a href="/" class="article-back">← Jefatura Distrital Quilmes</a>
+  </header>
+  <main class="article-main">
+    <article>
+      <div class="article-category">${escapeHtml(noticia.categoria || 'Noticia')}</div>
+      <h1>${title}</h1>
+      <time datetime="${escapeHtml(date)}">${escapeHtml(date)}</time>
+      ${noticia.descripcion ? `<p class="article-summary">${escapeHtml(noticia.descripcion)}</p>` : ''}
+      ${gallery}
+      <div class="article-content">${paragraphs}</div>
+    </article>
+    <a class="article-back-link" href="/">← Volver a todas las noticias</a>
+  </main>
+</body>
+</html>`;
+}
+
+function renderSitemap(rows, siteUrl) {
+  const urls = [
+    `${siteUrl}/`,
+    ...(rows || []).map(row => `${siteUrl}/noticia/${encodeURIComponent(String(row.slug))}`)
+  ];
+  const uniqueUrls = [...new Set(urls)];
+  return `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+    uniqueUrls.map(url => `  <url><loc>${escapeHtml(url)}</loc></url>`).join('\n') +
+    '\n</urlset>';
+}
+
 // Validación mejorada
 function validateNoticiaData(data, isUpdate = false) {
   const errors = [];
@@ -129,6 +280,14 @@ function validateNoticiaData(data, isUpdate = false) {
 
   if (data.imagen_url && typeof data.imagen_url === 'string' && data.imagen_url.length > 500) {
     errors.push('URL de imagen demasiado larga (máximo 500 caracteres)');
+  }
+
+  if (data.imagenes !== undefined) {
+    if (!Array.isArray(data.imagenes)) {
+      errors.push('imagenes debe ser un array de URLs');
+    } else if (data.imagenes.some(url => typeof url !== 'string' || url.trim().length > 500)) {
+      errors.push('Cada URL de imagen debe ser texto y tener como máximo 500 caracteres');
+    }
   }
 
   return errors;
@@ -183,8 +342,9 @@ function getAll(req, res) {
   }
 
   if (search) {
-    conditions.push('MATCH(n.titulo, n.texto) AGAINST(? IN NATURAL LANGUAGE MODE)');
-    params.push(search);
+    conditions.push('(n.titulo LIKE ? OR n.descripcion LIKE ? OR n.texto LIKE ? OR c.nombre LIKE ?)');
+    const searchTerm = `%${String(search).trim().substring(0, 200)}%`;
+    params.push(searchTerm, searchTerm, searchTerm, searchTerm);
   }
 
   // Solo noticias no eliminadas (soft delete)
@@ -225,7 +385,13 @@ function getAll(req, res) {
         details: process.env.NODE_ENV === 'development' ? err.message : undefined
       });
     }
-    res.json(results || []);
+    attachImagenes(results || [], (imageErr, noticias) => {
+      if (imageErr) {
+        console.error('[DB Error] getAll.attachImagenes:', imageErr);
+        return res.status(500).json({ error: 'Error al obtener imágenes de noticias' });
+      }
+      res.json(noticias || []);
+    });
   });
 }
 
@@ -265,7 +431,13 @@ function getById(req, res) {
       if (!results || results.length === 0) {
         return res.status(404).json({ error: 'Noticia no encontrada' });
       }
-      res.json(results[0]);
+      attachImagenes(results, (imageErr, noticias) => {
+        if (imageErr) {
+          console.error('[DB Error] getById.attachImagenes:', imageErr);
+          return res.status(500).json({ error: 'Error al obtener imágenes de la noticia' });
+        }
+        res.json(noticias[0]);
+      });
     }
   );
 }
@@ -304,8 +476,9 @@ function getAllAdmin(req, res) {
   }
 
   if (search) {
-    conditions.push('MATCH(n.titulo, n.texto) AGAINST(? IN NATURAL LANGUAGE MODE)');
-    params.push(search);
+    conditions.push('(n.titulo LIKE ? OR n.descripcion LIKE ? OR n.texto LIKE ? OR c.nombre LIKE ?)');
+    const searchTerm = `%${String(search).trim().substring(0, 200)}%`;
+    params.push(searchTerm, searchTerm, searchTerm, searchTerm);
   }
 
   // Solo noticias no eliminadas (soft delete)
@@ -346,7 +519,13 @@ function getAllAdmin(req, res) {
         details: process.env.NODE_ENV === 'development' ? err.message : undefined
       });
     }
-    res.json(results || []);
+    attachImagenes(results || [], (imageErr, noticias) => {
+      if (imageErr) {
+        console.error('[DB Error] getAllAdmin.attachImagenes:', imageErr);
+        return res.status(500).json({ error: 'Error al obtener imágenes de noticias' });
+      }
+      res.json(noticias || []);
+    });
   });
 }
 
@@ -388,7 +567,13 @@ function getByIdAdmin(req, res) {
       if (!results || results.length === 0) {
         return res.status(404).json({ error: 'Noticia no encontrada' });
       }
-      res.json(results[0]);
+      attachImagenes(results, (imageErr, noticias) => {
+        if (imageErr) {
+          console.error('[DB Error] getByIdAdmin.attachImagenes:', imageErr);
+          return res.status(500).json({ error: 'Error al obtener imágenes de la noticia' });
+        }
+        res.json(noticias[0]);
+      });
     }
   );
 }
@@ -434,7 +619,13 @@ function getBySlug(req, res) {
       if (!results || results.length === 0) {
         return res.status(404).json({ error: 'Noticia no encontrada' });
       }
-      res.json(results[0]);
+      attachImagenes(results, (imageErr, noticias) => {
+        if (imageErr) {
+          console.error('[DB Error] getBySlug.attachImagenes:', imageErr);
+          return res.status(500).json({ error: 'Error al obtener imágenes de la noticia' });
+        }
+        res.json(noticias[0]);
+      });
     }
   );
 }
@@ -517,12 +708,17 @@ function create(req, res) {
     return res.status(500).json({ error: 'Conexión a BD no disponible' });
   }
 
-  const { titulo, descripcion, texto, categoria_id, fecha, imagen_url, destacada, publicada } = req.body;
+  const { titulo, descripcion, texto, categoria_id, fecha, imagen_url, imagenes, destacada, publicada } = req.body;
 
   if (!titulo || !texto || !categoria_id || !fecha) {
     return res.status(400).json({ 
       error: 'Faltan campos requeridos: titulo, texto, categoria_id, fecha' 
     });
+  }
+
+  const imageErrors = validateNoticiaData({ imagenes, imagen_url }, true);
+  if (imageErrors.length > 0) {
+    return res.status(400).json({ error: 'Datos de imágenes inválidos', details: imageErrors });
   }
 
   const sanitizedTitle = String(titulo).trim().substring(0, 255);
@@ -534,7 +730,8 @@ function create(req, res) {
     texto: String(texto).trim(),
     categoria_id: parseInt(categoria_id, 10),
     fecha: String(fecha),
-    imagen_url: imagen_url ? String(imagen_url).trim().substring(0, 500) : null,
+    imagenes: normalizeNewsImages(imagenes, imagen_url),
+    imagen_url: null,
     destacada: destacada ? 1 : 0,
     publicada: publicada !== false ? 1 : 0
   };
@@ -542,6 +739,11 @@ function create(req, res) {
   if (isNaN(sanitizedData.categoria_id)) {
     return res.status(400).json({ error: 'categoria_id debe ser un número entero' });
   }
+
+  if (sanitizedData.imagenes.some(url => url.length > 500)) {
+    return res.status(400).json({ error: 'Cada URL de imagen debe tener como máximo 500 caracteres' });
+  }
+  sanitizedData.imagen_url = sanitizedData.imagenes[0] || null;
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(sanitizedData.fecha)) {
     return res.status(400).json({ error: 'fecha debe estar en formato YYYY-MM-DD' });
@@ -578,6 +780,12 @@ function create(req, res) {
           });
         }
 
+      insertNewsImages(result.insertId, sanitizedData.imagenes, imageErr => {
+        if (imageErr) {
+          console.error('[DB Error] create.imagenes:', imageErr);
+          return res.status(500).json({ error: 'La noticia se creó, pero no se pudieron guardar sus imágenes' });
+        }
+
       // Devolver la noticia creada con los datos completos
       db.query(
         `SELECT 
@@ -605,13 +813,20 @@ function create(req, res) {
               message: 'Noticia creada exitosamente'
             });
           }
-          res.status(201).json({ 
+          attachImagenes(rows, (attachErr, noticias) => {
+            if (attachErr) {
+              console.error('[DB Error] create.attachImagenes:', attachErr);
+              return res.status(500).json({ error: 'La noticia se creó, pero no se pudieron leer sus imágenes' });
+            }
+            res.status(201).json({
             ok: true,
-            data: rows[0],
+            data: noticias[0],
             message: 'Noticia creada exitosamente'
+            });
           });
         }
       );
+      });
     }
     );
   });
@@ -640,7 +855,13 @@ function update(req, res) {
     });
   }
 
-  const { titulo, descripcion, texto, categoria_id, fecha, imagen_url, destacada, publicada } = req.body;
+  const { titulo, descripcion, texto, categoria_id, fecha, imagen_url, imagenes, destacada, publicada } = req.body;
+  const sanitizedImages = imagenes === undefined
+    ? (imagen_url === undefined ? null : normalizeNewsImages(undefined, imagen_url))
+    : normalizeNewsImages(imagenes, imagen_url);
+  if (sanitizedImages?.some(url => url.length > 500)) {
+    return res.status(400).json({ error: 'Cada URL de imagen debe tener como máximo 500 caracteres' });
+  }
 
   // Construir query dinámico
   const updates = [];
@@ -674,7 +895,10 @@ function update(req, res) {
     params.push(String(fecha));
   }
 
-  if (imagen_url !== undefined) {
+  if (sanitizedImages !== null) {
+    updates.push('imagen_url = ?');
+    params.push(sanitizedImages[0] || null);
+  } else if (imagen_url !== undefined) {
     updates.push('imagen_url = ?');
     params.push(imagen_url ? String(imagen_url).trim().substring(0, 500) : null);
   }
@@ -689,15 +913,26 @@ function update(req, res) {
     params.push(publicada ? 1 : 0);
   }
 
-  if (updates.length === 0) {
+  if (updates.length === 0 && sanitizedImages === null) {
     return res.status(400).json({ error: 'No se proporcionaron campos para actualizar' });
   }
 
-  updates.push('updated_at = CURRENT_TIMESTAMP');
+  if (updates.length > 0 || sanitizedImages !== null) updates.push('updated_at = CURRENT_TIMESTAMP');
 
-  const sql = `UPDATE noticias SET ${updates.join(', ')} WHERE id = ? AND deleted_at IS NULL`;
+  const sql = updates.length > 0
+    ? `UPDATE noticias SET ${updates.join(', ')} WHERE id = ? AND deleted_at IS NULL`
+    : null;
 
-  db.query(sql, [...params, noticiaId], (err, result) => {
+  const saveImages = callback => {
+    if (sanitizedImages === null) return callback(null, { affectedRows: 1 });
+    replaceNewsImages(noticiaId, sanitizedImages, callback);
+  };
+  const saveNews = callback => {
+    if (!sql) return callback(null, { affectedRows: 1 });
+    db.query(sql, [...params, noticiaId], callback);
+  };
+
+  saveNews((err, result) => {
     if (err) {
       console.error('[DB Error] update:', err);
       return res.status(500).json({
@@ -709,6 +944,12 @@ function update(req, res) {
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Noticia no encontrada o ya eliminada' });
     }
+
+    saveImages(imageErr => {
+      if (imageErr) {
+        console.error('[DB Error] update.imagenes:', imageErr);
+        return res.status(500).json({ error: 'La noticia se actualizó, pero no se pudieron guardar sus imágenes' });
+      }
 
     // Devolver noticia actualizada
     db.query(
@@ -735,13 +976,20 @@ function update(req, res) {
         if (err) {
           return res.status(200).json({ ok: true, message: 'Noticia actualizada exitosamente' });
         }
-        res.json({
+        attachImagenes(rows, (attachErr, noticias) => {
+          if (attachErr) {
+            console.error('[DB Error] update.attachImagenes:', attachErr);
+            return res.status(500).json({ error: 'La noticia se actualizó, pero no se pudieron leer sus imágenes' });
+          }
+          res.json({
           ok: true,
-          data: rows[0],
+          data: noticias[0],
           message: 'Noticia actualizada exitosamente'
+          });
         });
       }
     );
+    });
   });
 }
 
@@ -783,6 +1031,70 @@ function remove(req, res) {
   );
 }
 
+function getDeletedAdmin(req, res) {
+  if (!db) return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  const pagination = getPagination(req.query);
+  db.query(
+    `SELECT n.id, n.titulo, n.slug, n.descripcion, n.texto, n.fecha,
+            n.imagen_url AS imagen, n.deleted_at, c.nombre AS categoria,
+            c.icono AS categoria_icono, n.categoria_id
+     FROM noticias n
+     LEFT JOIN categorias c ON n.categoria_id = c.id
+     WHERE n.deleted_at IS NOT NULL
+       AND n.deleted_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 48 HOUR)
+     ORDER BY n.deleted_at DESC
+     LIMIT ${pagination.limit} OFFSET ${pagination.offset}`,
+    (err, rows) => {
+      if (err) {
+        console.error('[DB Error] getDeletedAdmin:', err);
+        return res.status(500).json({ error: 'Error al obtener noticias eliminadas' });
+      }
+      attachImagenes(rows || [], (imageErr, noticias) => {
+        if (imageErr) {
+          console.error('[DB Error] getDeletedAdmin.attachImagenes:', imageErr);
+          return res.status(500).json({ error: 'Error al obtener imágenes de noticias eliminadas' });
+        }
+        res.json(noticias || []);
+      });
+    }
+  );
+}
+
+function restore(req, res) {
+  if (!db) return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  const noticiaId = Number.parseInt(req.params.id, 10);
+  if (!Number.isSafeInteger(noticiaId) || noticiaId < 1) {
+    return res.status(400).json({ error: 'ID de noticia inválido' });
+  }
+  db.query(
+    `UPDATE noticias SET deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ? AND deleted_at IS NOT NULL
+       AND deleted_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 48 HOUR)`,
+    [noticiaId],
+    (err, result) => {
+      if (err) {
+        console.error('[DB Error] restore:', err);
+        return res.status(500).json({ error: 'Error al restaurar la noticia' });
+      }
+      if (!result.affectedRows) {
+        return res.status(404).json({ error: 'La noticia no está en la papelera o ya venció el plazo de recuperación' });
+      }
+      res.json({ ok: true, message: 'Noticia restaurada' });
+    }
+  );
+}
+
+function purgeExpiredDeleted(callback = () => {}) {
+  if (!db) return callback(new Error('Conexión a BD no disponible'));
+  db.query(
+    'DELETE FROM noticias WHERE deleted_at IS NOT NULL AND deleted_at < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 48 HOUR)',
+    err => {
+      if (err) console.error('[DB Error] purgeExpiredDeleted.noticias:', err);
+      callback(err || null);
+    }
+  );
+}
+
 module.exports = {
   setDatabase,
   requireAuth,
@@ -792,6 +1104,12 @@ module.exports = {
   getById,
   getByIdAdmin,
   getBySlug,
+  getDeletedAdmin,
+  restore,
+  purgeExpiredDeleted,
+  getDescription,
+  renderArticlePage,
+  renderSitemap,
   getStats,
   create,
   update,

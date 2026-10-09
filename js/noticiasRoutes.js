@@ -56,6 +56,8 @@ router.delete('/admin/session', (req, res) => {
 });
 
 // Rutas administrativas (requieren autenticación)
+router.get('/admin/deleted', requireAuth, noticiasController.getDeletedAdmin);
+router.post('/admin/:id/restore', requireAuth, noticiasController.restore);
 router.get('/admin', requireAuth, noticiasController.getAllAdmin);
 router.get('/admin/:id', requireAuth, noticiasController.getByIdAdmin);
 router.post('/', requireAuth, noticiasController.create);

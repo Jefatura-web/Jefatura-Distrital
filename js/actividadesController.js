@@ -216,7 +216,7 @@ function getAllAdmin(req, res) {
     return res.status(500).json({ error: 'Conexión a BD no disponible' });
   }
 
-  const { nivel, page = 1, limit = 50 } = req.query;
+  const { nivel, search, page = 1, limit = 50 } = req.query;
   const conditions = ['deleted_at IS NULL'];
   const params = [];
 
@@ -226,6 +226,12 @@ function getAllAdmin(req, res) {
     }
     conditions.push('nivel = ?');
     params.push(String(nivel).toLowerCase().trim());
+  }
+
+  if (search) {
+    conditions.push('(titulo LIKE ? OR descripcion LIKE ? OR inspector_nombre LIKE ? OR grado LIKE ? OR nivel LIKE ?)');
+    const searchTerm = `%${String(search).trim().substring(0, 200)}%`;
+    params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
   }
 
   const pagination = getPagination({ page, limit });
@@ -240,6 +246,7 @@ function getAllAdmin(req, res) {
       console.error('[DB Error] actividades.getAllAdmin:', err);
       return res.status(500).json({ error: 'Error al obtener actividades' });
     }
+
     attachImagenes(results || [], (imgErr, conImagenes) => {
       if (imgErr) {
         console.error('[DB Error] actividades.getAllAdmin.attachImagenes:', imgErr);
@@ -248,6 +255,67 @@ function getAllAdmin(req, res) {
       res.json(conImagenes);
     });
   });
+}
+
+function getDeletedAdmin(req, res) {
+  if (!db) return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  const pagination = getPagination(req.query);
+  db.query(
+    `SELECT id, nivel, grado, mes, titulo, descripcion, inspector_nombre, deleted_at, created_at, updated_at
+     FROM actividades_inspectores
+     WHERE deleted_at IS NOT NULL
+       AND deleted_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 48 HOUR)
+     ORDER BY deleted_at DESC
+     LIMIT ${pagination.limit} OFFSET ${pagination.offset}`,
+    (err, results) => {
+      if (err) {
+        console.error('[DB Error] actividades.getDeletedAdmin:', err);
+        return res.status(500).json({ error: 'Error al obtener actividades eliminadas' });
+      }
+      attachImagenes(results || [], (imgErr, activities) => {
+        if (imgErr) {
+          console.error('[DB Error] actividades.getDeletedAdmin.attachImagenes:', imgErr);
+          return res.status(500).json({ error: 'Error al obtener fotos de actividades eliminadas' });
+        }
+        res.json(activities);
+      });
+    }
+  );
+}
+
+function restore(req, res) {
+  if (!db) return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isSafeInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'ID de actividad inválido' });
+  }
+  db.query(
+    `UPDATE actividades_inspectores SET deleted_at = NULL, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ? AND deleted_at IS NOT NULL
+       AND deleted_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 48 HOUR)`,
+    [id],
+    (err, result) => {
+      if (err) {
+        console.error('[DB Error] actividades.restore:', err);
+        return res.status(500).json({ error: 'Error al restaurar la actividad' });
+      }
+      if (!result.affectedRows) {
+        return res.status(404).json({ error: 'La actividad no está en la papelera o ya venció el plazo de recuperación' });
+      }
+      res.json({ ok: true, message: 'Actividad restaurada' });
+    }
+  );
+}
+
+function purgeExpiredDeleted(callback = () => {}) {
+  if (!db) return callback(new Error('Conexión a BD no disponible'));
+  db.query(
+    'DELETE FROM actividades_inspectores WHERE deleted_at IS NOT NULL AND deleted_at < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 48 HOUR)',
+    err => {
+      if (err) console.error('[DB Error] actividades.purgeExpiredDeleted:', err);
+      callback(err || null);
+    }
+  );
 }
 
 /**
@@ -430,7 +498,9 @@ function remove(req, res) {
 const router = express.Router();
 
 router.get('/', getAll);                                    // ?nivel=inicial&mes=2026-04
+router.get('/admin/deleted', requireAuth, getDeletedAdmin);
 router.get('/admin/list', requireAuth, getAllAdmin);         // /admin/list, no /admin (ver nota sobre shadowing en noticiasRoutes.js)
+router.post('/admin/:id/restore', requireAuth, restore);
 router.post('/', requireAuth, create);
 router.put('/:id', requireAuth, update);
 router.delete('/:id', requireAuth, remove);
@@ -441,3 +511,4 @@ router.get('/:id', getById);
 module.exports = router;
 module.exports.setDatabase = setDatabase;
 module.exports.NIVELES_VALIDOS = NIVELES_VALIDOS;
+module.exports.purgeExpiredDeleted = purgeExpiredDeleted;

@@ -92,7 +92,7 @@ El panel cambia el token por una cookie de sesión `HttpOnly`, `Secure` en produ
 2. Una vez creado el cluster, ir a **Connect** → copiar los datos de conexión (host, user, password).
 3. Abrir el **SQL Editor** del cluster y ejecutar el contenido de `Base_Jefatura.sql`.
 
-Si la base ya existe, ejecutar este SQL en el editor de TiDB **antes de desplegar**. Crea la galería y copia las imágenes que ya estaban guardadas en las noticias:
+Si la base ya existe, ejecutar este SQL en el editor de TiDB **antes de desplegar**. Crea la galería, copia las imágenes existentes y agrega la columna de establecimiento a actividades. Ejecutarlo una sola vez; si `escuela` ya existe, omití el `ALTER TABLE`:
 
 ```sql
 CREATE TABLE IF NOT EXISTS noticias_imagenes (
@@ -109,6 +109,9 @@ SELECT id, imagen_url, 0
 FROM noticias
 WHERE imagen_url IS NOT NULL
   AND imagen_url <> '';
+
+ALTER TABLE actividades_inspectores
+  ADD COLUMN escuela VARCHAR(255) NULL;
 ```
 
 ### 3.2 Subir el proyecto a GitHub

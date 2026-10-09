@@ -99,7 +99,7 @@
             <div class="form-options">
               <label class="form-checkbox">
                 <input id="noticia-destacada" name="destacada" type="checkbox" />
-                <span>Destacada en portada</span>
+                <span>Destacada en portada (reemplaza la actual)</span>
               </label>
               <label class="form-checkbox">
                 <input id="noticia-publicada" name="publicada" type="checkbox" checked />
@@ -207,6 +207,10 @@
             <div class="form-group">
               <label for="actividad-grado">Grado / Sala *</label>
               <input id="actividad-grado" name="grado" type="text" placeholder="Ej: Sala de 4, 6to grado A" required />
+            </div>
+            <div class="form-group">
+              <label for="actividad-escuela">Escuela / establecimiento</label>
+              <input id="actividad-escuela" name="escuela" type="text" maxlength="255" placeholder="Ej: Escuela Primaria N.º 12" autocomplete="organization" />
             </div>
           </div>
           <div class="form-group">

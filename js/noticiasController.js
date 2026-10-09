@@ -732,7 +732,7 @@ function create(req, res) {
     fecha: String(fecha),
     imagenes: normalizeNewsImages(imagenes, imagen_url),
     imagen_url: null,
-    destacada: destacada ? 1 : 0,
+    destacada: destacada && publicada !== false ? 1 : 0,
     publicada: publicada !== false ? 1 : 0
   };
 
@@ -780,11 +780,25 @@ function create(req, res) {
           });
         }
 
-      insertNewsImages(result.insertId, sanitizedData.imagenes, imageErr => {
-        if (imageErr) {
-          console.error('[DB Error] create.imagenes:', imageErr);
-          return res.status(500).json({ error: 'La noticia se creó, pero no se pudieron guardar sus imágenes' });
+      const saveImages = callback => {
+        if (!sanitizedData.destacada) return callback(null);
+        db.query(
+          'UPDATE noticias SET destacada = 0 WHERE id <> ? AND destacada = 1',
+          [result.insertId],
+          callback
+        );
+      };
+
+      saveImages(featureErr => {
+        if (featureErr) {
+          console.error('[DB Error] create.clearFeatured:', featureErr);
+          return res.status(500).json({ error: 'La noticia se creó, pero no se pudo actualizar la noticia destacada anterior' });
         }
+        insertNewsImages(result.insertId, sanitizedData.imagenes, imageErr => {
+          if (imageErr) {
+            console.error('[DB Error] create.imagenes:', imageErr);
+            return res.status(500).json({ error: 'La noticia se creó, pero no se pudieron guardar sus imágenes' });
+          }
 
       // Devolver la noticia creada con los datos completos
       db.query(
@@ -827,6 +841,7 @@ function create(req, res) {
         }
       );
       });
+      });
     }
     );
   });
@@ -856,6 +871,7 @@ function update(req, res) {
   }
 
   const { titulo, descripcion, texto, categoria_id, fecha, imagen_url, imagenes, destacada, publicada } = req.body;
+  const shouldFeature = Boolean(destacada && publicada !== false);
   const sanitizedImages = imagenes === undefined
     ? (imagen_url === undefined ? null : normalizeNewsImages(undefined, imagen_url))
     : normalizeNewsImages(imagenes, imagen_url);
@@ -905,7 +921,7 @@ function update(req, res) {
 
   if (destacada !== undefined) {
     updates.push('destacada = ?');
-    params.push(destacada ? 1 : 0);
+    params.push(shouldFeature ? 1 : 0);
   }
 
   if (publicada !== undefined) {
@@ -929,7 +945,14 @@ function update(req, res) {
   };
   const saveNews = callback => {
     if (!sql) return callback(null, { affectedRows: 1 });
-    db.query(sql, [...params, noticiaId], callback);
+    db.query(sql, [...params, noticiaId], (err, result) => {
+      if (err || !result?.affectedRows || !shouldFeature) return callback(err, result);
+      db.query(
+        'UPDATE noticias SET destacada = 0 WHERE id <> ? AND destacada = 1',
+        [noticiaId],
+        clearError => callback(clearError, result)
+      );
+    });
   };
 
   saveNews((err, result) => {

@@ -1140,6 +1140,12 @@
       .primary-nav { padding: 0 16px; }
       .primary-nav.open { display: flex; }
       .nav-toggle { display: block; }
+      .widget[aria-labelledby="widget-inspectores"] .widget-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .inspectores-menu-toggle { display: inline-flex; }
       .primary-nav a { padding: 12px 14px; font-size: 13px; font-weight: 600; }
       .main-layout {
         padding: 20px 16px;
@@ -1486,7 +1492,7 @@
 
 .nivel-filtros {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(190px, 280px) auto;
+  grid-template-columns: minmax(180px, 220px) minmax(220px, 1fr) minmax(180px, 220px) minmax(130px, 160px) auto;
   align-items: center;
   gap: 12px;
   margin-bottom: 4px;
@@ -1496,7 +1502,26 @@
   margin: 0;
 }
 
-.nivel-inspector-filtro {
+@media (max-width: 1050px) and (min-width: 769px) {
+  .nivel-filtros {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nivel-filtros .nivel-filtro-wrap {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 768px) {
+  .nivel-filtros {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
+.nivel-inspector-filtro,
+.nivel-nivel-filtro,
+.nivel-anio-filtro {
   display: grid;
   gap: 4px;
   color: var(--gris-texto, #444b5e);
@@ -1504,7 +1529,9 @@
   font-weight: 700;
 }
 
-.nivel-inspector-filtro select {
+.nivel-inspector-filtro select,
+.nivel-nivel-filtro select,
+.nivel-anio-filtro select {
   width: 100%;
   min-height: 44px;
   padding: 8px 12px;
@@ -1513,6 +1540,33 @@
   background: #fff;
   color: var(--gris-texto, #444b5e);
   font: inherit;
+}
+
+.inspectores-menu-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border: 1px solid rgba(255, 255, 255, .55);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.inspectores-menu-toggle:focus-visible,
+.nivel-filtros select:focus-visible,
+.nivel-limpiar-filtros:focus-visible {
+  outline: 3px solid var(--dorado, #c9a227);
+  outline-offset: 2px;
+}
+
+.widget-body[hidden] {
+  display: none;
 }
 
 .nivel-limpiar-filtros {
@@ -1774,7 +1828,7 @@
 }
 
 @media (max-width: 600px) {
-  .nm-body { padding: 18px 18px 24px; }
+  .nm-body { padding: 18px 18px 24px;   }
   .nm-galeria { padding: 18px 18px 0; }
   .nm-body h2 { font-size: 18px; }
   .noticia-modal-content { border-radius: 14px; }
@@ -1891,5 +1945,106 @@
 
   .article-content {
     font-size: 16px;
+  }
+}
+
+.actividad-share-tools {
+  margin: 18px 0;
+  padding: 14px;
+  border: 1px solid var(--borde, #dde3ef);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.actividad-share-tools label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--azul-marino, #0d2154);
+  font-weight: 700;
+}
+
+.actividad-share-tools > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actividad-share-tools input {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--borde, #dde3ef);
+  border-radius: 7px;
+  background: #fff;
+}
+
+.actividad-share-tools button {
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--azul-marino, #0d2154);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#actividad-share-status {
+  display: block;
+  min-height: 1.2em;
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  #nivel-detalle-modal.visible,
+  #nivel-detalle-modal.visible * {
+    visibility: visible !important;
+  }
+
+  #nivel-detalle-modal.visible {
+    position: static;
+    display: block !important;
+    padding: 0;
+    background: #fff;
+  }
+
+  .nivel-detalle-content {
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  .nivel-detalle-cerrar,
+  .actividad-share-tools,
+  .foto-nav,
+  .foto-dots,
+  .foto-counter {
+    display: none !important;
+  }
+
+  .foto-carousel,
+  .foto-track {
+    display: block;
+    transform: none !important;
+  }
+
+  .foto-slide {
+    display: block;
+    break-inside: avoid;
+    margin: 12px 0;
+  }
+
+  .foto-slide img {
+    max-width: 100%;
+    max-height: 75vh;
+    object-fit: contain;
   }
 }

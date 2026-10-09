@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS actividades_inspectores (
   id                INT AUTO_INCREMENT PRIMARY KEY,
   nivel             VARCHAR(50)  NOT NULL,   -- slug: inicial, primaria, secundaria, tecnica, agraria, superior, especial, pcyps, dejayam, ed-fisica, ed-artistica
   grado             VARCHAR(150) NOT NULL,   -- texto libre, ej: "Sala de 4", "6to grado A"
+  escuela           VARCHAR(255) NULL,
   mes               DATE         NOT NULL,   -- siempre día 01 del mes que representa
   titulo            VARCHAR(255) NOT NULL,
   descripcion       TEXT,

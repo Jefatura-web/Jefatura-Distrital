@@ -27,6 +27,23 @@
 
     <!-- Filtros de actividades -->
     <div class="nivel-filtros" aria-label="Filtros de actividades">
+      <label class="nivel-nivel-filtro">
+        <span>Nivel educativo</span>
+        <select id="nivel-filtro-nivel" aria-label="Filtrar por nivel educativo">
+          <option value="todos">Todos los niveles</option>
+          <option value="inicial">Nivel Inicial</option>
+          <option value="primaria">Nivel Primario</option>
+          <option value="secundaria">Nivel Secundario</option>
+          <option value="tecnica">Educación Técnica</option>
+          <option value="agraria">Educación Agraria</option>
+          <option value="superior">Nivel Superior</option>
+          <option value="especial">Educación Especial</option>
+          <option value="pcyps">PCYPS</option>
+          <option value="dejayam">DEJAYAM</option>
+          <option value="ed-fisica">Educación Física</option>
+          <option value="ed-artistica">Educación Artística</option>
+        </select>
+      </label>
       <label class="nivel-filtro-wrap">
         <span class="nivel-filtro-icon" aria-hidden="true">🔍</span>
         <input type="search" id="nivel-filtro"
@@ -37,6 +54,12 @@
         <span>Inspector/a</span>
         <select id="nivel-filtro-inspector" aria-label="Filtrar por inspector">
           <option value="">Todos los inspectores</option>
+        </select>
+      </label>
+      <label class="nivel-anio-filtro">
+        <span>Año</span>
+        <select id="nivel-filtro-anio" aria-label="Filtrar por año">
+          <option value="">Todos los años</option>
         </select>
       </label>
       <button id="nivel-filtros-limpiar" class="nivel-limpiar-filtros" type="button">Limpiar filtros y fechas</button>

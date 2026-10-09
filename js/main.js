@@ -5,6 +5,7 @@
 import { cargarNoticias, initSearch, showAppAlert, cerrarNoticiaModal } from './news.js';
 import { initCalendar } from './calendar.js';
 import { getElement } from './utils.js';
+import { cargarActividadesRecientes } from './actividades.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('🚀 Aplicación iniciada');
@@ -13,6 +14,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   initSearch();
   initAdminAccessButton();
   initNoticiaModal();
+  initInspectorMenu();
+  cargarActividadesRecientes();
 
   try {
     const noticias = await cargarNoticias();
@@ -42,6 +45,38 @@ function initNavToggle() {
     const expanded = navToggle.getAttribute('aria-expanded') === 'true';
     navToggle.setAttribute('aria-expanded', String(!expanded));
     navMenu.classList.toggle('open');
+    navToggle.setAttribute('aria-label', expanded ? 'Abrir menú principal' : 'Cerrar menú principal');
+  });
+}
+
+function initInspectorMenu() {
+  const toggle = getElement('#inspectores-menu-toggle');
+  const menu = getElement('#inspectores-menu');
+  if (!toggle || !menu) return;
+
+  toggle.addEventListener('click', () => {
+    const expanded = toggle.getAttribute('aria-expanded') === 'true';
+    toggle.setAttribute('aria-expanded', String(!expanded));
+    menu.hidden = expanded;
+    toggle.setAttribute('aria-label', expanded ? 'Abrir niveles de inspectores' : 'Cerrar niveles de inspectores');
+  });
+  const mobileMenu = window.matchMedia('(max-width: 768px)');
+  const syncInspectorMenu = event => {
+    const expanded = !event.matches;
+    toggle.setAttribute('aria-expanded', String(expanded));
+    toggle.setAttribute('aria-label', expanded ? 'Cerrar niveles de inspectores' : 'Abrir niveles de inspectores');
+    menu.hidden = !expanded;
+  };
+  syncInspectorMenu(mobileMenu);
+  mobileMenu.addEventListener('change', syncInspectorMenu);
+  menu.querySelectorAll('a').forEach(link => {
+    link.addEventListener('click', () => {
+      if (window.matchMedia('(max-width: 768px)').matches) {
+        menu.hidden = true;
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.setAttribute('aria-label', 'Abrir niveles de inspectores');
+      }
+    });
   });
 }
 

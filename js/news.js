@@ -30,16 +30,6 @@ function normalizeNoticia(noticia) {
   };
 }
 
-const featuredOverride = {
-  id: 'featured-proyecto-distrital',
-  titulo: 'Proyecto Distrital Quilmes',
-  texto: 'Presentamos la imagen del Proyecto Distrital del 28 de abril, destacada en la portada y en el calendario.',
-  categoria: 'Proyecto Distrital',
-  fecha: '2026-04-28',
-  imagen: 'proyecto_distrital.jpg',
-  destacada: 1
-};
-
 function newsUrl(noticia) {
   return noticia.slug ? `/noticia/${encodeURIComponent(noticia.slug)}` : '#';
 }
@@ -48,7 +38,8 @@ export async function cargarNoticias() {
   const cacheKey = 'jefatura_noticias_v1';
   try {
     const noticias = await apiFetch('/noticias');
-    const normalized = Array.isArray(noticias) ? noticias.map(normalizeNoticia) : [];
+    if (!Array.isArray(noticias)) throw new Error('La API devolvió un formato de noticias inesperado');
+    const normalized = noticias.map(normalizeNoticia);
     if (normalized.length) {
       allNoticias = normalized;
       // Guardar copia en cache para fallback offline
@@ -59,11 +50,6 @@ export async function cargarNoticias() {
       }
     } else {
       allNoticias = normalized;
-    }
-
-    const hasFeaturedOverride = allNoticias.some(n => n.fecha === featuredOverride.fecha && n.imagen === featuredOverride.imagen);
-    if (!hasFeaturedOverride) {
-      allNoticias.unshift(featuredOverride);
     }
 
     renderNoticiaDestacada();
@@ -77,13 +63,13 @@ export async function cargarNoticias() {
       const cachedRaw = localStorage.getItem(cacheKey);
       if (cachedRaw) {
         const cached = JSON.parse(cachedRaw);
-        allNoticias = Array.isArray(cached?.data) ? cached.data.map(normalizeNoticia) : [];
-        // Asegurar override destacado
-        const hasFeaturedOverride = allNoticias.some(n => n.fecha === featuredOverride.fecha && n.imagen === featuredOverride.imagen);
-        if (!hasFeaturedOverride) {
-          allNoticias.unshift(featuredOverride);
-        }
-        showAppAlert('Cargando noticias desde caché (sin conexión).', 'info');
+        allNoticias = Array.isArray(cached?.data)
+          ? cached.data
+            .filter(noticia => noticia?.slug !== 'featured-proyecto-distrital' &&
+              noticia?.id !== 'featured-proyecto-distrital')
+            .map(normalizeNoticia)
+          : [];
+        showAppAlert('No se pudo actualizar el contenido. Mostrando la última copia guardada.', 'info');
         renderNoticiaDestacada();
         renderNoticiasList();
         return allNoticias;
@@ -92,12 +78,22 @@ export async function cargarNoticias() {
       handleError(e, 'cargarNoticias.parseCache');
     }
 
-    // Si no hay cache disponible, mostrar mensaje de error en UI.
-    // No reemplazamos la tarjeta destacada estática si ya existe.
-    showErrorMessage('No se pudieron cargar las noticias. Intente nuevamente más tarde.');
+    allNoticias = [];
+    renderNoticiaDestacada();
+    const featured = getElement('.noticia-destacada');
+    if (featured) {
+      featured.innerHTML = `
+        <div class="nd-body" role="alert">
+          <p>No se pudo cargar la noticia destacada.</p>
+          <button type="button" class="news-retry">Reintentar</button>
+        </div>`;
+      featured.querySelector('.news-retry')?.addEventListener('click', cargarNoticias);
+    }
+    showErrorMessage('No se pudieron cargar las noticias. Revisá tu conexión e intentá nuevamente.');
     const grid = getElement('.grid-noticias');
     if (grid) {
-      grid.innerHTML = '<div class="sin-noticias">No se pudieron cargar las noticias. Por favor recarga la página.</div>';
+      grid.innerHTML = `<div class="sin-noticias" role="alert">No se pudieron cargar las noticias. <button type="button" class="news-retry">Reintentar</button></div>`;
+      grid.querySelector('.news-retry')?.addEventListener('click', cargarNoticias);
     }
     return [];
   }
@@ -122,11 +118,11 @@ function renderNoticiaDestacada() {
     return;
   }
 
-  const destacada = allNoticias.find(n => n.destacada || n.fecha === featuredOverride.fecha) || allNoticias[0];
-  const imageSrc = destacada.imagen ? sanitize(destacada.imagen) : 'proyecto_distrital.jpg';
+  const destacada = allNoticias.find(n => n.destacada) || allNoticias[0];
+  const imageSrc = destacada.imagen || '';
 
   const imagenHTML = imageSrc
-    ? `<img src="${imageSrc}" alt="Imagen: ${sanitize(destacada.titulo)}" loading="lazy" onerror="this.onerror=null;this.src='logo_jefatura.jpg'" />`
+    ? `<img src="${sanitize(imageSrc)}" alt="Imagen: ${sanitize(destacada.titulo)}" loading="lazy" onerror="this.onerror=null;this.style.display='none'" />`
     : `<div class="nd-imagen-emoji" aria-label="Icono de educación">🎓</div>`;
   const summary = destacada.descripcion || String(destacada.texto || '').substring(0, 240);
 
@@ -144,7 +140,7 @@ function renderNoticiaDestacada() {
 }
 
 function getFeaturedItem() {
-  return allNoticias.find(n => n.destacada || n.fecha === featuredOverride.fecha) || allNoticias[0];
+  return allNoticias.find(n => n.destacada) || allNoticias[0];
 }
 
 function getAvailableNoticias() {
@@ -284,7 +280,8 @@ function showErrorMessage(message) {
   showAppAlert(message, 'error');
   const grid = getElement('.grid-noticias');
   if (grid) {
-    grid.innerHTML = `<div class="sin-noticias">${sanitize(message)}</div>`;
+    grid.innerHTML = `<div class="sin-noticias" role="alert">${sanitize(message)} <button type="button" class="news-retry">Reintentar</button></div>`;
+    grid.querySelector('.news-retry')?.addEventListener('click', cargarNoticias);
   }
 }
 

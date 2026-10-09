@@ -785,6 +785,7 @@ async function handleActividadSubmit(event) {
   const data = {
     nivel: formData.get('nivel'),
     grado: formData.get('grado'),
+    escuela: formData.get('escuela'),
     mes: formData.get('mes'), // input type=month -> 'YYYY-MM'
     titulo: formData.get('titulo'),
     descripcion: formData.get('descripcion'),
@@ -841,6 +842,7 @@ function formatActividadCard(actividad) {
   const mes = sanitize(String(actividad.mes || '').substring(0, 7));
   const cantidadFotos = (actividad.imagenes || []).length;
   const inspector = sanitize(actividad.inspector_nombre || 'Inspector/a no indicado');
+  const escuela = sanitize(actividad.escuela || '');
   const descripcion = sanitize(String(actividad.descripcion || '').trim());
   const primeraImagen = (actividad.imagenes && actividad.imagenes[0]) || '';
   const imgHtml = primeraImagen
@@ -854,6 +856,7 @@ function formatActividadCard(actividad) {
         <div class="admin-news-category">${nivel} · ${grado}</div>
         <h3>${titulo}</h3>
         <p>${mes} · 👤 ${inspector} · ${cantidadFotos} foto${cantidadFotos === 1 ? '' : 's'}</p>
+        ${escuela ? `<p class="admin-activity-school">🏫 ${escuela}</p>` : ''}
         ${descripcion ? `<p class="admin-activity-description">${descripcion}</p>` : ''}
       </div>
       <div class="admin-news-actions">
@@ -936,6 +939,7 @@ function handleActividadEdit(actividad) {
   getElement('#actividad-id').value = actividad.id;
   getElement('#actividad-nivel').value = actividad.nivel || '';
   getElement('#actividad-grado').value = actividad.grado || '';
+  getElement('#actividad-escuela').value = actividad.escuela || '';
   getElement('#actividad-mes').value = String(actividad.mes || '').substring(0, 7);
   getElement('#actividad-titulo').value = actividad.titulo || '';
   getElement('#actividad-inspector').value = actividad.inspector_nombre || '';

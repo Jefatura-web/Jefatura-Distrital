@@ -82,18 +82,7 @@
         <h2 id="titulo-destacada">Noticia destacada</h2>
       </section>
       <article class="noticia-destacada" aria-live="polite">
-        <div class="nd-imagen">
-          <img src="proyecto_distrital.jpg" alt="Proyecto Distrital Quilmes - 28 de abril" loading="lazy" onerror="this.onerror=null;this.src='logo_jefatura.jpg'" />
-        </div>
-        <div class="nd-body">
-          <div class="nd-tag" aria-label="Etiqueta: Destacado">📌 Destacado</div>
-          <h3>Proyecto Distrital Quilmes</h3>
-          <p>Presentamos la imagen del Proyecto Distrital del 28 de abril, destacada en el calendario y visible desde la portada.</p>
-          <div class="nd-meta">
-            <time class="nd-fecha" datetime="2026-04-28" aria-label="Fecha: 28 de abril de 2026">📅 28 de abril de 2026</time>
-            <a href="#" class="leer-mas" aria-label="Leer noticia completa">Leer más →</a>
-          </div>
-        </div>
+        <div class="nd-body"><p class="sin-noticias">Cargando noticia destacada…</p></div>
       </article>
 
       <!-- ÚLTIMAS NOTICIAS -->
@@ -110,54 +99,10 @@
       <!-- ACTIVIDADES RECIENTES -->
       <section class="seccion-titulo" aria-labelledby="titulo-actividades">
         <h2 id="titulo-actividades">Actividades recientes</h2>
-        <a href="#" class="ver-mas-link" aria-label="Ver todas las actividades">Ver todas →</a>
+        <a href="nivel.html?nivel=todos" class="ver-mas-link" aria-label="Ver todas las actividades">Ver todas →</a>
       </section>
-      <ul class="lista-novedades" role="list">
-        <li role="listitem">
-          <a href="#" class="novedad-item">
-            <div class="novedad-icono ni-azul" aria-label="Icono de reunión">🤝</div>
-            <div class="novedad-texto">
-              <h5>Reunión de trabajo con inspectores y supervisores del distrito</h5>
-              <time datetime="2026-04-22" aria-label="Fecha: 22 de abril de 2026">📅 22 de abril de 2026 · Institucional</time>
-            </div>
-          </a>
-        </li>
-        <li role="listitem">
-          <a href="#" class="novedad-item">
-            <div class="novedad-icono ni-dorado" aria-label="Icono de premio">🏆</div>
-            <div class="novedad-texto">
-              <h5>Olimpiadas Matemáticas Distritales — Resultados de la instancia clasificatoria</h5>
-              <time datetime="2026-04-18" aria-label="Fecha: 18 de abril de 2026">📅 18 de abril de 2026 · Académico</time>
-            </div>
-          </a>
-        </li>
-        <li role="listitem">
-          <a href="#" class="novedad-item">
-            <div class="novedad-icono ni-verde" aria-label="Icono de accesibilidad e inclusión">♿</div>
-            <div class="novedad-texto">
-              <h5>Jornada distrital de Educación Inclusiva en el CEC N° 802</h5>
-              <time datetime="2026-04-14" aria-label="Fecha: 14 de abril de 2026">📅 14 de abril de 2026 · Inclusión</time>
-            </div>
-          </a>
-        </li>
-        <li role="listitem">
-          <a href="#" class="novedad-item">
-            <div class="novedad-icono ni-azul" aria-label="Icono de estadísticas">📊</div>
-            <div class="novedad-texto">
-              <h5>Presentación del informe estadístico del ciclo 2025 ante el CGE</h5>
-              <time datetime="2026-04-08" aria-label="Fecha: 8 de abril de 2026">📅 8 de abril de 2026 · Institucional</time>
-            </div>
-          </a>
-        </li>
-        <li role="listitem">
-          <a href="#" class="novedad-item">
-            <div class="novedad-icono ni-dorado" aria-label="Icono de arte">🎨</div>
-            <div class="novedad-texto">
-              <h5>Muestra artística interescolar en el Teatro Municipal de Quilmes</h5>
-              <time datetime="2026-04-04" aria-label="Fecha: 4 de abril de 2026">📅 4 de abril de 2026 · Cultura</time>
-            </div>
-          </a>
-        </li>
+      <ul class="lista-novedades" id="actividades-recientes" role="list" aria-live="polite">
+        <li class="sin-noticias">Cargando actividades recientes…</li>
       </ul>
 
     </main>
@@ -169,8 +114,12 @@
       <section class="widget" aria-labelledby="widget-inspectores">
         <div class="widget-header">
           <h3 id="widget-inspectores">⚡ Sede De Inspectores</h3>
+          <button id="inspectores-menu-toggle" class="inspectores-menu-toggle" type="button"
+                  aria-expanded="true" aria-controls="inspectores-menu" aria-label="Cerrar niveles de inspectores">
+            <span aria-hidden="true">☰</span>
+          </button>
         </div>
-        <div class="widget-body">
+        <div class="widget-body" id="inspectores-menu">
           <a href="nivel.html?nivel=inicial" class="acceso-item" aria-label="Inicial">
             <div class="ai-icon"></div> Inicial
             <span class="ai-arrow" aria-hidden="true">›</span>

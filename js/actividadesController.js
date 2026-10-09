@@ -72,6 +72,10 @@ function validateActividadData(data, isUpdate = false) {
     }
   }
 
+  if (data.escuela !== undefined && (typeof data.escuela !== 'string' || data.escuela.length > 255)) {
+    errors.push('escuela debe ser texto de hasta 255 caracteres');
+  }
+
   if (!isUpdate || data.mes !== undefined) {
     if (!isValidMes(data.mes)) {
       errors.push('mes requerido en formato YYYY-MM o YYYY-MM-DD');
@@ -129,14 +133,27 @@ function getAll(req, res) {
     return res.status(500).json({ error: 'Conexión a BD no disponible' });
   }
 
-  const { nivel, mes, grado } = req.query;
+  const { nivel, mes, grado, anio } = req.query;
 
-  if (!nivel || !isValidNivel(nivel)) {
-    return res.status(400).json({ error: `Parámetro 'nivel' requerido y válido. Valores permitidos: ${NIVELES_VALIDOS.join(', ')}` });
+  if (nivel && !isValidNivel(nivel)) {
+    return res.status(400).json({ error: `Parámetro 'nivel' inválido. Valores permitidos: ${NIVELES_VALIDOS.join(', ')}` });
   }
 
-  const conditions = ['nivel = ?', 'deleted_at IS NULL'];
-  const params = [String(nivel).toLowerCase().trim()];
+  const conditions = ['deleted_at IS NULL'];
+  const params = [];
+
+  if (nivel) {
+    conditions.push('nivel = ?');
+    params.push(String(nivel).toLowerCase().trim());
+  }
+
+  if (anio !== undefined) {
+    if (!/^\d{4}$/.test(String(anio)) || Number(anio) < 1900 || Number(anio) > 9999) {
+      return res.status(400).json({ error: "Parámetro 'anio' inválido. Formato esperado: YYYY" });
+    }
+    conditions.push('YEAR(mes) = ?');
+    params.push(Number(anio));
+  }
 
   if (mes) {
     if (!isValidMes(mes)) {
@@ -151,7 +168,7 @@ function getAll(req, res) {
     params.push(String(grado));
   }
 
-  const sql = `SELECT id, nivel, grado, mes, titulo, descripcion, inspector_nombre, created_at, updated_at
+  const sql = `SELECT id, nivel, grado, escuela, mes, titulo, descripcion, inspector_nombre, created_at, updated_at
                FROM actividades_inspectores
                WHERE ${conditions.join(' AND ')}
                ORDER BY mes DESC, grado ASC, id DESC`;
@@ -175,6 +192,30 @@ function getAll(req, res) {
   });
 }
 
+function getRecent(req, res) {
+  if (!db) return res.status(500).json({ error: 'Conexión a BD no disponible' });
+  db.query(
+    `SELECT id, nivel, grado, escuela, mes, titulo, descripcion, inspector_nombre, created_at
+     FROM actividades_inspectores
+     WHERE deleted_at IS NULL
+     ORDER BY mes DESC, created_at DESC, id DESC
+     LIMIT 6`,
+    (err, rows) => {
+      if (err) {
+        console.error('[DB Error] actividades.getRecent:', err);
+        return res.status(500).json({ error: 'No se pudieron cargar las actividades recientes' });
+      }
+      attachImagenes(rows || [], (imageErr, activities) => {
+        if (imageErr) {
+          console.error('[DB Error] actividades.getRecent.attachImagenes:', imageErr);
+          return res.status(500).json({ error: 'No se pudieron cargar las fotos de actividades recientes' });
+        }
+        res.json(activities || []);
+      });
+    }
+  );
+}
+
 function getById(req, res) {
   if (!db) {
     return res.status(500).json({ error: 'Conexión a BD no disponible' });
@@ -186,7 +227,7 @@ function getById(req, res) {
   }
 
   db.query(
-    `SELECT id, nivel, grado, mes, titulo, descripcion, inspector_nombre, created_at, updated_at
+    `SELECT id, nivel, grado, escuela, mes, titulo, descripcion, inspector_nombre, created_at, updated_at
      FROM actividades_inspectores WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
     [id],
     (err, results) => {
@@ -237,13 +278,13 @@ function getAllAdmin(req, res) {
   }
 
   if (search) {
-    conditions.push('(titulo LIKE ? OR descripcion LIKE ? OR inspector_nombre LIKE ? OR grado LIKE ? OR nivel LIKE ?)');
+    conditions.push('(titulo LIKE ? OR descripcion LIKE ? OR inspector_nombre LIKE ? OR grado LIKE ? OR escuela LIKE ? OR nivel LIKE ?)');
     const searchTerm = `%${String(search).trim().substring(0, 200)}%`;
-    params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+    params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
   }
 
   const pagination = getPagination({ page, limit });
-  const sql = `SELECT id, nivel, grado, mes, titulo, descripcion, inspector_nombre, created_at, updated_at
+  const sql = `SELECT id, nivel, grado, escuela, mes, titulo, descripcion, inspector_nombre, created_at, updated_at
                FROM actividades_inspectores
                WHERE ${conditions.join(' AND ')}
                ORDER BY created_at DESC
@@ -269,7 +310,7 @@ function getDeletedAdmin(req, res) {
   if (!db) return res.status(500).json({ error: 'Conexión a BD no disponible' });
   const pagination = getPagination(req.query);
   db.query(
-    `SELECT id, nivel, grado, mes, titulo, descripcion, inspector_nombre, deleted_at, created_at, updated_at
+    `SELECT id, nivel, grado, escuela, mes, titulo, descripcion, inspector_nombre, deleted_at, created_at, updated_at
      FROM actividades_inspectores
      WHERE deleted_at IS NOT NULL
        AND deleted_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 48 HOUR)
@@ -339,11 +380,12 @@ function create(req, res) {
     return res.status(400).json({ error: 'Datos inválidos', details: errors });
   }
 
-  const { nivel, grado, mes, titulo, descripcion, inspector_nombre, imagenes } = req.body;
+  const { nivel, grado, escuela, mes, titulo, descripcion, inspector_nombre, imagenes } = req.body;
 
   const sanitizedData = {
     nivel: String(nivel).toLowerCase().trim(),
     grado: String(grado).trim().substring(0, 150),
+    escuela: escuela ? String(escuela).trim().substring(0, 255) : null,
     mes: normalizeMesToFirstDay(mes),
     titulo: String(titulo).trim().substring(0, 255),
     descripcion: descripcion ? String(descripcion).trim() : null,
@@ -355,9 +397,9 @@ function create(req, res) {
     : [];
 
   db.query(
-    `INSERT INTO actividades_inspectores (nivel, grado, mes, titulo, descripcion, inspector_nombre)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [sanitizedData.nivel, sanitizedData.grado, sanitizedData.mes, sanitizedData.titulo, sanitizedData.descripcion, sanitizedData.inspector_nombre],
+    `INSERT INTO actividades_inspectores (nivel, grado, escuela, mes, titulo, descripcion, inspector_nombre)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [sanitizedData.nivel, sanitizedData.grado, sanitizedData.escuela, sanitizedData.mes, sanitizedData.titulo, sanitizedData.descripcion, sanitizedData.inspector_nombre],
     (err, result) => {
       if (err) {
         console.error('[DB Error] actividades.create:', err);
@@ -414,12 +456,13 @@ function update(req, res) {
     return res.status(400).json({ error: 'Datos inválidos', details: errors });
   }
 
-  const { nivel, grado, mes, titulo, descripcion, inspector_nombre, imagenes } = req.body;
+  const { nivel, grado, escuela, mes, titulo, descripcion, inspector_nombre, imagenes } = req.body;
   const updates = [];
   const params = [];
 
   if (nivel !== undefined) { updates.push('nivel = ?'); params.push(String(nivel).toLowerCase().trim()); }
   if (grado !== undefined) { updates.push('grado = ?'); params.push(String(grado).trim().substring(0, 150)); }
+  if (escuela !== undefined) { updates.push('escuela = ?'); params.push(escuela ? String(escuela).trim().substring(0, 255) : null); }
   if (mes !== undefined) { updates.push('mes = ?'); params.push(normalizeMesToFirstDay(mes)); }
   if (titulo !== undefined) { updates.push('titulo = ?'); params.push(String(titulo).trim().substring(0, 255)); }
   if (descripcion !== undefined) { updates.push('descripcion = ?'); params.push(descripcion ? String(descripcion).trim() : null); }
@@ -505,7 +548,8 @@ function remove(req, res) {
 // ── Rutas (antes vivían en actividadesRoutes.js, ahora acá para no duplicar archivos) ──
 const router = express.Router();
 
-router.get('/', getAll);                                    // ?nivel=inicial&mes=2026-04
+router.get('/recientes', getRecent);
+router.get('/', getAll);                                    // ?nivel=inicial&anio=2026&mes=2026-04
 router.get('/admin/deleted', requireAuth, getDeletedAdmin);
 router.get('/admin/list', requireAuth, getAllAdmin);         // /admin/list, no /admin (ver nota sobre shadowing en noticiasRoutes.js)
 router.post('/admin/:id/restore', requireAuth, restore);

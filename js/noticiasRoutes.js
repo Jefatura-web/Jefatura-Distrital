@@ -10,7 +10,8 @@ const {
   createAdminSession,
   clearAdminSession,
   isAdminSession,
-  createLoginAttemptLimiter
+  createLoginAttemptLimiter,
+  requireCsrf
 } = require('./adminAuth');
 const loginLimiter = createLoginAttemptLimiter();
 
@@ -22,7 +23,7 @@ router.get('/slug/:slug', noticiasController.getBySlug);
 router.get('/stats', noticiasController.getStats);
 
 // Verificación rápida del token de administración para el acceso protegido
-router.post('/admin/verify-token', loginLimiter.check, (req, res) => {
+router.post('/admin/verify-token', requireCsrf, loginLimiter.check, async (req, res) => {
   const rawToken = req.body?.token || '';
   const token = String(rawToken).replace(/^Bearer\s+/i, '').trim();
 
@@ -41,30 +42,45 @@ router.post('/admin/verify-token', loginLimiter.check, (req, res) => {
   }
 
   loginLimiter.clear(req);
-  createAdminSession(res);
-  return res.json({ ok: true, message: 'Token válido.' });
-});
-
-router.get('/admin/session', (req, res) => {
-  if (!isAdminSession(req)) {
-    return res.status(401).json({ ok: false, error: 'No hay una sesión administrativa activa.' });
+  try {
+    await createAdminSession(res);
+    return res.json({ ok: true, message: 'Token válido.' });
+  } catch (error) {
+    console.error('[verify-token] No se pudo iniciar sesión:', error.code || error.name);
+    return res.status(503).json({ ok: false, error: 'No se pudo iniciar la sesión administrativa. Intentá nuevamente.' });
   }
-  return res.json({ ok: true });
 });
 
-router.delete('/admin/session', (req, res) => {
-  clearAdminSession(req, res);
+router.get('/admin/session', async (req, res) => {
+  try {
+    if (!await isAdminSession(req)) {
+      return res.status(401).json({ ok: false, error: 'No hay una sesión administrativa activa.' });
+    }
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('[admin-session] No se pudo consultar sesión:', error.code || error.name);
+    return res.status(503).json({ ok: false, error: 'No se pudo validar la sesión. Intentá nuevamente.' });
+  }
+});
+
+router.delete('/admin/session', requireCsrf, async (req, res) => {
+  try {
+    await clearAdminSession(req, res);
+  } catch (error) {
+    console.error('[admin-session] No se pudo cerrar sesión:', error.code || error.name);
+    return res.status(503).json({ ok: false, error: 'No se pudo cerrar la sesión. Intentá nuevamente.' });
+  }
   return res.json({ ok: true });
 });
 
 // Rutas administrativas (requieren autenticación)
 router.get('/admin/deleted', requireAuth, noticiasController.getDeletedAdmin);
-router.post('/admin/:id/restore', requireAuth, noticiasController.restore);
+router.post('/admin/:id/restore', requireAuth, requireCsrf, noticiasController.restore);
 router.get('/admin', requireAuth, noticiasController.getAllAdmin);
 router.get('/admin/:id', requireAuth, noticiasController.getByIdAdmin);
-router.post('/', requireAuth, noticiasController.create);
-router.put('/:id', requireAuth, noticiasController.update);
-router.delete('/:id', requireAuth, noticiasController.remove);
+router.post('/', requireAuth, requireCsrf, noticiasController.create);
+router.put('/:id', requireAuth, requireCsrf, noticiasController.update);
+router.delete('/:id', requireAuth, requireCsrf, noticiasController.remove);
 
 // Mantener la ruta dinámica al final: de otro modo "/admin" se interpreta como
 // un ID de noticia y las rutas administrativas nunca llegan a ejecutarse.

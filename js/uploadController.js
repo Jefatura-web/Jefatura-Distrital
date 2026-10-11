@@ -11,7 +11,9 @@
 const express    = require('express');
 const multer     = require('multer');
 const cloudinary = require('cloudinary').v2;
-const { requireAuth } = require('./adminAuth');
+const crypto     = require('crypto');
+const path       = require('path');
+const { requireAuth, requireCsrf } = require('./adminAuth');
 
 const router = express.Router();
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/heic', 'image/heif']);
@@ -55,14 +57,18 @@ cloudinary.config({
   secure:     true
 });
 
-function subirACloudinary(buffer, nombreOriginal) {
+function subirACloudinary(buffer, nombreOriginal, detectedMime) {
   return new Promise((resolve, reject) => {
-    const publicId = `jefatura/${Date.now()}-${String(nombreOriginal).replace(/[^a-zA-Z0-9._-]/g, '-')}`;
+    const baseName = path.parse(String(nombreOriginal || 'imagen')).name
+      .replace(/[^a-zA-Z0-9_-]/g, '-')
+      .substring(0, 80) || 'imagen';
+    const publicId = `jefatura/${Date.now()}-${crypto.randomUUID()}-${baseName}`;
     const stream   = cloudinary.uploader.upload_stream(
       {
         public_id: publicId,
         resource_type: 'image',
-        transformation: [{ quality: 'auto', fetch_format: 'auto' }]
+        format: detectedMime === 'image/gif' ? 'gif' : 'jpg',
+        transformation: [{ quality: 'auto' }]
       },
       (err, result) => { if (err) reject(err); else resolve(result); }
     );
@@ -95,7 +101,7 @@ function mensajeErrorCloudinary(err) {
 }
 
 // ── Ruta POST /upload ─────────────────────────────────────────────────────────
-router.post('/', requireAuth, upload.single('image'), async (req, res) => {
+router.post('/', requireAuth, requireCsrf, upload.single('image'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ ok: false, error: 'No se recibió ningún archivo.' });
   }
@@ -113,14 +119,17 @@ router.post('/', requireAuth, upload.single('image'), async (req, res) => {
   }
 
   try {
-    const result = await subirACloudinary(req.file.buffer, req.file.originalname);
+    const result = await subirACloudinary(req.file.buffer, req.file.originalname, detectedMime);
     if (!result?.secure_url) throw new Error('Cloudinary no devolvió una URL segura para la imagen.');
-    res.json({ ok: true, url: result.secure_url });
+    const imageUrl = new URL(result.secure_url);
+    if (imageUrl.protocol !== 'https:' || imageUrl.hostname !== 'res.cloudinary.com') {
+      throw new Error('Cloudinary devolvió una dirección de imagen no válida.');
+    }
+    res.json({ ok: true, url: imageUrl.href });
   } catch (err) {
     console.error('[upload] Error Cloudinary:', {
       httpCode: err?.http_code || null,
-      name: err?.name || null,
-      message: err?.message || String(err)
+      name: err?.name || null
     });
     res.status(502).json({ ok: false, error: mensajeErrorCloudinary(err) });
   }
@@ -128,8 +137,11 @@ router.post('/', requireAuth, upload.single('image'), async (req, res) => {
 
 // Error handler de multer (archivo demasiado grande / tipo inválido)
 router.use((err, _req, res, _next) => {
-  console.error('[upload] Multer error:', err.message);
-  res.status(400).json({ ok: false, error: err.message });
+  console.error('[upload] Error de recepción:', err.code || err.name || 'Error');
+  const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+  res.status(status).json({ ok: false, error: status === 413
+    ? 'La imagen supera el límite de 10 MB.'
+    : err.message || 'No se pudo recibir la imagen.' });
 });
 
 module.exports = router;

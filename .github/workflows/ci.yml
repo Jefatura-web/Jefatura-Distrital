@@ -1,0 +1,31 @@
+name: Quality checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Check CommonJS syntax
+        run: >-
+          node --check js/server.js &&
+          node --check js/server.config.js &&
+          node --check js/adminAuth.js &&
+          node --check js/noticiasController.js &&
+          node --check js/noticiasRoutes.js &&
+          node --check js/actividadesController.js &&
+          node --check js/uploadController.js &&
+          node --check scripts/backup.js
+      - name: Check browser module syntax
+        run: |
+          for file in js/admin.js js/actividades.js js/news.js js/utils.js; do
+            node --input-type=module --check < "$file"
+          done

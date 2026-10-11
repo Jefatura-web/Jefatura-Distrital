@@ -141,7 +141,9 @@ function absoluteImageUrl(value, siteUrl) {
   if (!image) return '';
   try {
     const parsed = new URL(image, siteUrl);
-    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : '';
+    if (parsed.protocol === 'https:') return parsed.href;
+    if (parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname)) return parsed.href;
+    return '';
   } catch {
     return '';
   }

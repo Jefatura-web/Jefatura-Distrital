@@ -3,7 +3,7 @@
  * ✅ FIX: img con src vacío reemplazado por placeholder con emoji
  */
 
-import { sanitize, handleError, apiFetch, getElement } from './utils.js';
+import { sanitize, safeUrl, parseLocalDate, dateToISO, handleError, apiFetch, getElement } from './utils.js';
 
 let allNoticias = [];
 let categorias = [];
@@ -15,11 +15,8 @@ const NEWS_PAGE_SIZE = 12;
 
 function normalizeFecha(value) {
   if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return String(value).substring(0, 10);
-  }
-  return date.toISOString().slice(0, 10);
+  const date = parseLocalDate(String(value));
+  return date ? dateToISO(date) : '';
 }
 
 function normalizeNoticia(noticia) {
@@ -39,7 +36,7 @@ function normalizeNoticia(noticia) {
 }
 
 function newsUrl(noticia) {
-  return noticia.slug ? `/noticia/${encodeURIComponent(noticia.slug)}` : '#';
+  return noticia.slug ? safeUrl(`/noticia/${encodeURIComponent(noticia.slug)}`) : '';
 }
 
 export async function cargarCategorias() {
@@ -216,7 +213,7 @@ function renderNoticiaDestacada() {
   const imageSrc = destacada.imagen || '';
 
   const imagenHTML = imageSrc
-    ? `<img src="${sanitize(imageSrc)}" alt="Imagen: ${sanitize(destacada.titulo)}" loading="lazy" onerror="this.onerror=null;this.style.display='none'" />`
+    ? `<img src="${sanitize(safeUrl(imageSrc, { allowRelative: false }))}" alt="Imagen: ${sanitize(destacada.titulo)}" loading="lazy" onerror="this.onerror=null;this.style.display='none'" />`
     : `<div class="nd-imagen-emoji" aria-label="Icono de educación">🎓</div>`;
   const summary = destacada.descripcion || String(destacada.texto || '').substring(0, 240);
 
@@ -228,7 +225,7 @@ function renderNoticiaDestacada() {
       <p>${sanitize(summary)}</p>
       <div class="nd-meta">
         <time class="nd-fecha" datetime="${sanitize(destacada.fecha)}" aria-label="Fecha: ${sanitize(destacada.fecha)}">📅 ${sanitize(destacada.fecha)}</time>
-        <a href="${sanitize(newsUrl(destacada))}" class="leer-mas" aria-label="Leer noticia completa">Leer más →</a>
+        ${newsUrl(destacada) ? `<a href="${sanitize(newsUrl(destacada))}" class="leer-mas" aria-label="Leer noticia completa">Leer más →</a>` : ''}
       </div>
     </div>`;
 }
@@ -278,19 +275,22 @@ function renderNoticiasList(noticias = getAvailableNoticias()) {
       ? noticia.categoria_color
       : '#1a3a7a';
     const imgSrc = noticia.imagenes?.[0] || noticia.imagen || noticia.imagen_url || '';
+    const articleUrl = newsUrl(noticia);
+    const safeImageUrl = safeUrl(imgSrc, { allowRelative: false });
     const imgHtml = imgSrc
-      ? `<img src="${sanitize(imgSrc)}" alt="${sanitize(noticia.titulo)}" loading="lazy"
+      ? (safeImageUrl ? `<img src="${sanitize(safeImageUrl)}" alt="${sanitize(noticia.titulo)}" loading="lazy"
               onerror="this.onerror=null;this.parentNode.classList.add('cn-imagen-fallback');this.remove()">`
+        : '')
       : '';
     card.innerHTML = `
       <div class="cn-imagen" style="--category-color:${categoryColor}">${imgHtml}<span class="cn-emoji" aria-hidden="true">${sanitize(icon)}</span></div>
       <div class="cn-body">
         <div class="cn-categoria" style="--category-color:${categoryColor}">${sanitize(icon)} ${sanitize(noticia.categoria || 'General')}</div>
-        <h4><a href="${sanitize(newsUrl(noticia))}">${sanitize(noticia.titulo)}</a></h4>
+        <h4>${articleUrl ? `<a href="${sanitize(articleUrl)}">${sanitize(noticia.titulo)}</a>` : sanitize(noticia.titulo)}</h4>
         <p>${sanitize(String(noticia.descripcion || noticia.texto || '').substring(0, 140))}…</p>
         <div class="cn-footer">
           <time datetime="${sanitize(noticia.fecha)}">📅 ${sanitize(noticia.fecha)}</time>
-          <a class="cn-leer" href="${sanitize(newsUrl(noticia))}">Leer más →</a>
+          ${articleUrl ? `<a class="cn-leer" href="${sanitize(articleUrl)}">Leer más →</a>` : ''}
         </div>
       </div>`;
     grid.appendChild(card);
@@ -385,7 +385,9 @@ export function mostrarNoticiaModal(noticia) {
     : [noticia.imagen || noticia.imagen_url].filter(Boolean);
   const imgHtml = images.length
     ? `<div class="nm-galeria">${images.map((url, index) =>
-      `<img src="${sanitize(url)}" alt="${sanitize(noticia.titulo)} — foto ${index + 1}"${index ? ' loading="lazy"' : ''} onerror="this.remove()">`
+      safeUrl(url, { allowRelative: false })
+        ? `<img src="${sanitize(safeUrl(url, { allowRelative: false }))}" alt="${sanitize(noticia.titulo)} — foto ${index + 1}"${index ? ' loading="lazy"' : ''} onerror="this.remove()">`
+        : ''
     ).join('')}</div>`
     : '';
 

@@ -3,6 +3,13 @@ const crypto = require('crypto');
 const SESSION_COOKIE = 'jefatura_admin_session';
 const SESSION_TTL_SECONDS = 2 * 60 * 60;
 const sessions = new Map();
+let database = null;
+
+function query(sql, values = []) {
+  return new Promise((resolve, reject) => {
+    database.query(sql, values, (error, result) => error ? reject(error) : resolve(result));
+  });
+}
 
 function timingSafeEqual(a, b) {
   const valueA = Buffer.from(String(a || ''));
@@ -17,11 +24,24 @@ function getSessionId(req) {
   return cookie.trim().slice(SESSION_COOKIE.length + 1);
 }
 
-function isAdminSession(req, now = Date.now()) {
+function sessionHash(sessionId) {
+  return crypto.createHash('sha256').update(sessionId).digest('hex');
+}
+
+async function isAdminSession(req, now = Date.now()) {
   const sessionId = getSessionId(req);
   if (!sessionId) return false;
 
-  const key = crypto.createHash('sha256').update(sessionId).digest('hex');
+  const key = sessionHash(sessionId);
+  if (database) {
+    const rows = await query(
+      'SELECT session_hash FROM admin_sessions WHERE session_hash = ? AND expires_at > ? LIMIT 1',
+      [key, new Date(now)]
+    );
+    return rows.length > 0;
+  }
+
+  if (process.env.NODE_ENV === 'production') return false;
   const expiresAt = sessions.get(key);
   if (!expiresAt) return false;
   if (expiresAt <= now) {
@@ -31,33 +51,51 @@ function isAdminSession(req, now = Date.now()) {
   return true;
 }
 
-function createAdminSession(res, now = Date.now()) {
-  for (const [key, expiresAt] of sessions) {
-    if (expiresAt <= now) sessions.delete(key);
-  }
-
-  const sessionId = crypto.randomBytes(32).toString('base64url');
-  const key = crypto.createHash('sha256').update(sessionId).digest('hex');
-  const expiresAt = now + SESSION_TTL_SECONDS * 1000;
-  sessions.set(key, expiresAt);
-
+function setSessionCookie(res, sessionId, expiresAt, maxAge) {
   const attributes = [
     `${SESSION_COOKIE}=${sessionId}`,
     'HttpOnly',
     'SameSite=Strict',
     'Path=/',
-    `Max-Age=${SESSION_TTL_SECONDS}`,
+    `Max-Age=${maxAge}`,
     `Expires=${new Date(expiresAt).toUTCString()}`
   ];
   if (process.env.NODE_ENV === 'production') attributes.push('Secure');
   res.setHeader('Set-Cookie', attributes.join('; '));
 }
 
-function clearAdminSession(req, res) {
+async function createAdminSession(res, now = Date.now()) {
+  for (const [key, expiresAt] of sessions) {
+    if (expiresAt <= now) sessions.delete(key);
+  }
+
+  const sessionId = crypto.randomBytes(32).toString('base64url');
+  const key = sessionHash(sessionId);
+  const expiresAt = now + SESSION_TTL_SECONDS * 1000;
+
+  if (database) {
+    await query(
+      'INSERT INTO admin_sessions (session_hash, expires_at) VALUES (?, ?)',
+      [key, new Date(expiresAt)]
+    );
+  } else if (process.env.NODE_ENV === 'production') {
+    throw new Error('Almacenamiento de sesiones no disponible.');
+  } else {
+    sessions.set(key, expiresAt);
+  }
+
+  setSessionCookie(res, sessionId, expiresAt, SESSION_TTL_SECONDS);
+}
+
+async function clearAdminSession(req, res) {
   const sessionId = getSessionId(req);
   if (sessionId) {
-    const key = crypto.createHash('sha256').update(sessionId).digest('hex');
-    sessions.delete(key);
+    const key = sessionHash(sessionId);
+    if (database) {
+      await query('DELETE FROM admin_sessions WHERE session_hash = ?', [key]);
+    } else {
+      sessions.delete(key);
+    }
   }
 
   const attributes = [
@@ -72,15 +110,42 @@ function clearAdminSession(req, res) {
   res.setHeader('Set-Cookie', attributes.join('; '));
 }
 
-function requireAuth(req, res, next) {
-  if (!process.env.ADMIN_TOKEN) {
-    console.error('[adminAuth] ADMIN_TOKEN no está configurado en las variables de entorno.');
-    return res.status(500).json({ error: 'Autenticación no configurada en el servidor' });
-  }
-  if (!isAdminSession(req)) {
-    return res.status(401).json({ error: 'La sesión administrativa expiró o no es válida. Ingresá nuevamente.' });
+function requireCsrf(req, res, next) {
+  const origin = String(req.get('origin') || '');
+  const expectedOrigin = `${req.protocol}://${req.get('host')}`;
+  const fetchSite = String(req.get('sec-fetch-site') || '').toLowerCase();
+  if (origin !== expectedOrigin || fetchSite === 'cross-site' ||
+      req.get('x-requested-with') !== 'XMLHttpRequest') {
+    return res.status(403).json({ error: 'La solicitud no pudo validarse. Recargá la página e intentá nuevamente.' });
   }
   next();
+}
+
+async function requireAuth(req, res, next) {
+  if (!process.env.ADMIN_TOKEN) {
+    console.error('[adminAuth] ADMIN_TOKEN no está configurado.');
+    return res.status(500).json({ error: 'Autenticación no configurada en el servidor' });
+  }
+  try {
+    if (!await isAdminSession(req)) {
+      return res.status(401).json({ error: 'La sesión administrativa expiró o no es válida. Ingresá nuevamente.' });
+    }
+    next();
+  } catch (error) {
+    console.error('[adminAuth] No se pudo consultar la sesión administrativa:', error.code || error.name);
+    return res.status(503).json({ error: 'No se pudo validar la sesión. Intentá nuevamente en unos minutos.' });
+  }
+}
+
+function setDatabase(db) {
+  database = db;
+}
+
+function purgeExpiredSessions(callback = () => {}) {
+  if (!database) return callback(new Error('Almacenamiento de sesiones no disponible.'));
+  database.query('DELETE FROM admin_sessions WHERE expires_at <= CURRENT_TIMESTAMP', error => {
+    callback(error || null);
+  });
 }
 
 function createLoginAttemptLimiter({ limit = 5, windowMs = 15 * 60 * 1000, now = Date.now } = {}) {
@@ -117,9 +182,13 @@ module.exports = {
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
   timingSafeEqual,
+  sessionHash,
   isAdminSession,
   createAdminSession,
   clearAdminSession,
   requireAuth,
+  requireCsrf,
+  setDatabase,
+  purgeExpiredSessions,
   createLoginAttemptLimiter
 };

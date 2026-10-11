@@ -20,9 +20,24 @@ export function apiFetch(path, options = {}) {
   return safeFetch(url, options);
 }
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
+
 export async function safeFetch(url, options = {}) {
+  const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, signal: callerSignal, ...fetchOptions } = options;
+  const controller = new AbortController();
+  let callerAborted = false;
+  const abortFromCaller = () => {
+    callerAborted = true;
+    controller.abort(callerSignal?.reason);
+  };
+  if (callerSignal?.aborted) abortFromCaller();
+  else callerSignal?.addEventListener('abort', abortFromCaller, { once: true });
+  const timeout = Number.isFinite(timeoutMs) && timeoutMs > 0
+    ? setTimeout(() => controller.abort(new Error('Tiempo de espera agotado')), timeoutMs)
+    : null;
+
   try {
-    const response = await fetch(url, options);
+    const response = await fetch(url, { ...fetchOptions, signal: controller.signal });
     const body     = await response.text();
     let   data     = null;
     try { data = body ? JSON.parse(body) : null; } catch { data = body; }
@@ -35,8 +50,20 @@ export async function safeFetch(url, options = {}) {
     }
     return data;
   } catch (error) {
+    if (controller.signal.aborted) {
+      const aborted = new Error(callerAborted
+        ? 'La solicitud fue cancelada.'
+        : 'El servidor tardó demasiado en responder. Intentá nuevamente.');
+      aborted.name = callerAborted ? 'AbortError' : 'TimeoutError';
+      aborted.code = callerAborted ? 'ABORT_ERR' : 'ETIMEDOUT';
+      if (!callerAborted) handleError(aborted, `safeFetch(${url})`);
+      throw aborted;
+    }
     handleError(error, `safeFetch(${url})`);
     throw error;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    callerSignal?.removeEventListener('abort', abortFromCaller);
   }
 }
 
@@ -59,17 +86,54 @@ export function sanitize(str) {
   return div.innerHTML;
 }
 
+export function safeUrl(value, { base = window.location.href, allowRelative = true } = {}) {
+  const candidate = String(value ?? '').trim();
+  if (!candidate || /[\u0000-\u001f\u007f]/.test(candidate)) return '';
+  try {
+    const parsed = new URL(candidate, base);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+    if (!allowRelative && !/^[a-z][a-z\d+.-]*:/i.test(candidate)) return '';
+    return parsed.href;
+  } catch {
+    return '';
+  }
+}
+
 // ── Fechas ────────────────────────────────────────────────────────────────────
-export function formatDate(date) {
-  if (!(date instanceof Date)) return '';
+export function parseLocalDate(value) {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? null
+      : new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+  if (typeof value !== 'string') return null;
+
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:$|[T ])/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
+    ? date
+    : null;
+}
+
+export function formatDate(value, options = {}) {
+  const date = parseLocalDate(value);
+  if (!date) return '';
   return date.toLocaleDateString('es-AR', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', ...options
   });
 }
 
 export function dateToISO(date) {
-  if (!(date instanceof Date)) return '';
-  return date.toISOString().slice(0, 10);
+  const localDate = parseLocalDate(date);
+  if (!localDate) return '';
+  const year = localDate.getFullYear();
+  const month = String(localDate.getMonth() + 1).padStart(2, '0');
+  const day = String(localDate.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 // ── Errores ───────────────────────────────────────────────────────────────────

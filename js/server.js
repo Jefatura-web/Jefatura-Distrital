@@ -8,11 +8,13 @@ const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
 const path = require('path');
+const crypto = require('crypto');
 
 // Importar configuración y controladores
 const config = require('./server.config');
 const noticiasController = require('./noticiasController');
 const actividadesController = require('./actividadesController');
+const adminAuth = require('./adminAuth');
 
 // ===============================
 // INICIALIZAR APLICACIÓN
@@ -20,6 +22,15 @@ const actividadesController = require('./actividadesController');
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
+app.use((req, res, next) => {
+  req.requestId = crypto.randomUUID();
+  res.setHeader('X-Request-ID', req.requestId);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
 
 // ===============================
 // MIDDLEWARE
@@ -42,10 +53,43 @@ const db = mysql.createPool({
   connectionLimit:    config.database.connectionLimit,
   queueLimit:         config.database.queueLimit
 });
+noticiasController.setDatabase(db);
+actividadesController.setDatabase(db);
+adminAuth.setDatabase(db);
 
 let server = null;
+const startedAt = new Date().toISOString();
+
+const purgeDeletedContent = () => {
+  adminAuth.purgeExpiredSessions(error => {
+    if (error) console.error('[maintenance] No se pudieron purgar sesiones vencidas:', error.code || error.name);
+  });
+  noticiasController.purgeExpiredDeleted(err => {
+    if (err) console.error('[maintenance] No se pudieron purgar noticias vencidas:', err.code || err.name);
+  });
+  actividadesController.purgeExpiredDeleted(err => {
+    if (err) console.error('[maintenance] No se pudieron purgar actividades vencidas:', err.code || err.name);
+  });
+};
+const purgeTimer = setInterval(purgeDeletedContent, 15 * 60 * 1000);
+purgeTimer.unref();
 
 const startServer = () => {
+  app.get('/healthz', (_req, res) => res.json({ status: 'ok' }));
+  app.get('/readyz', (req, res) => {
+    db.query('SELECT 1 AS ready FROM admin_sessions LIMIT 1', error => {
+      if (error) {
+        console.error(JSON.stringify({
+          event: 'readiness_check_failed',
+          requestId: req.requestId,
+          code: error.code || error.name
+        }));
+        return res.status(503).json({ status: 'not_ready' });
+      }
+      res.json({ status: 'ready', startedAt });
+    });
+  });
+
   const getPublicSiteUrl = req => {
     const candidate = config.siteUrl || `${req.protocol}://${req.get('host')}`;
     try {
@@ -147,9 +191,17 @@ const startServer = () => {
   });
 
   app.use((err, req, res, next) => {
-    console.error('❌ Error del servidor:', err);
+    console.error(JSON.stringify({
+      event: 'request_failed',
+      requestId: req.requestId,
+      path: req.path,
+      method: req.method,
+      status: err.status || 500,
+      code: err.code || err.name || 'Error'
+    }));
     res.status(500).json({ 
       error: 'Error interno del servidor',
+      requestId: req.requestId,
       details: config.env === 'development' ? err.message : undefined
     });
   });
@@ -171,28 +223,16 @@ const startServer = () => {
 
 db.getConnection((err, connection) => {
   if (err) {
-    console.warn('⚠️ No se pudo conectar a MySQL/TiDB:', err.message || err);
+    console.warn('⚠️ No se pudo conectar a MySQL/TiDB:', err.code || err.name || 'Error');
     console.warn('  Host:', config.database.host, '| Port:', config.database.port);
-    console.warn('Continuando sin BD — /noticias fallará; verify-token seguirá funcionando.');
+    console.warn('El servidor iniciará en modo no disponible hasta recuperar la conexión a la base.');
     startServer();
     return;
   }
 
   console.log('✅ Conectado a MySQL/TiDB:', `${config.database.host}:${config.database.port}/${config.database.database}`);
   connection.release();
-  noticiasController.setDatabase(db);
-  actividadesController.setDatabase(db);
-  const purgeDeletedContent = () => {
-    noticiasController.purgeExpiredDeleted(err => {
-      if (err) console.error('[maintenance] No se pudieron purgar noticias vencidas.');
-    });
-    actividadesController.purgeExpiredDeleted(err => {
-      if (err) console.error('[maintenance] No se pudieron purgar actividades vencidas.');
-    });
-  };
   purgeDeletedContent();
-  const purgeTimer = setInterval(purgeDeletedContent, 15 * 60 * 1000);
-  purgeTimer.unref();
   startServer();
 });
 

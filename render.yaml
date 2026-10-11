@@ -6,9 +6,9 @@ services:
   - type: web
     name: jefatura-quilmes
     runtime: node
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: node js/server.js
-    healthCheckPath: /noticias
+    healthCheckPath: /readyz
 
     envVars:
       - key: NODE_ENV

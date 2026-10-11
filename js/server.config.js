@@ -6,10 +6,10 @@
 require('dotenv').config();
 
 const isProd = process.env.NODE_ENV === 'production';
-const corsOrigins = String(process.env.CORS_ORIGIN || '*')
+const configuredCorsOrigins = String(process.env.CORS_ORIGIN || (isProd ? '' : '*'))
   .split(',')
   .map(origin => origin.trim())
-  .filter(Boolean);
+  .filter(origin => Boolean(origin) && (!isProd || origin !== '*'));
 
 module.exports = {
   port: process.env.PORT || 3000,
@@ -33,10 +33,13 @@ module.exports = {
   },
 
   cors: {
-    // CORS_ORIGIN admite una o más URLs separadas por comas. No usamos
-    // credenciales porque la API se autentica con Authorization: Bearer;
-    // "credentials: true" junto con "*" es rechazado por los navegadores.
-    origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
+    // La API se sirve desde el mismo origen. En producción, el CORS cross-origin
+    // queda deshabilitado salvo que se declaren orígenes explícitos.
+    origin: configuredCorsOrigins.length === 0
+      ? false
+      : configuredCorsOrigins.length === 1
+        ? configuredCorsOrigins[0]
+        : configuredCorsOrigins,
     credentials: false
   }
 };

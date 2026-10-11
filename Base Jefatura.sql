@@ -10,6 +10,16 @@ CREATE DATABASE IF NOT EXISTS jefatura_db;
 USE jefatura_db;
 
 -- ============================================================
+-- TABLA: sesiones administrativas (token aleatorio nunca guardado en claro)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  session_hash CHAR(64) NOT NULL PRIMARY KEY,
+  created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expires_at   DATETIME NOT NULL,
+  INDEX idx_admin_sessions_expires (expires_at)
+);
+
+-- ============================================================
 -- TABLA: categorias
 -- ============================================================
 CREATE TABLE IF NOT EXISTS categorias (

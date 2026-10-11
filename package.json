@@ -6,7 +6,11 @@
   "scripts": {
     "start": "node js/server.js",
     "dev": "node js/server.js",
-    "diagnose": "node diagnostico.js"
+    "diagnose": "node diagnostico.js",
+    "test": "node --test tests/*.test.js",
+    "backup": "node scripts/backup.js",
+    "backup:verify": "node scripts/backup.js --verify",
+    "backup:restore": "node scripts/backup.js --restore"
   },
   "keywords": [
     "jefatura",

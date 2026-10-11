@@ -4,7 +4,7 @@
  * (Fusiona los ex-archivos admin.js, adminActions.js y noticiasForm.js)
  */
 
-import { apiFetch as request, getElement, sanitize, handleError } from './utils.js';
+import { apiFetch as request, getElement, safeUrl, sanitize, handleError } from './utils.js';
 import { cargarCategorias, cargarNoticias, renderNoticiasList, showAppAlert } from './news.js';
 import { renderCalendar } from './calendar.js';
 
@@ -16,6 +16,10 @@ const setToken = value => { adminAuthenticated = Boolean(value); return adminAut
 async function apiFetch(path, options = {}) {
   const headers = new Headers(options.headers || {});
   headers.delete('Authorization');
+  const method = String(options.method || 'GET').toUpperCase();
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    headers.set('X-Requested-With', 'XMLHttpRequest');
+  }
   try {
     return await request(path, { ...options, headers, credentials: 'same-origin' });
   } catch (error) {
@@ -51,7 +55,7 @@ function initLivePreview() {
     const categoryOption = form.querySelector('#noticia-categoria')?.selectedOptions[0];
     const destacada   = !!form.querySelector('#noticia-destacada')?.checked;
     const publicada   = !!form.querySelector('#noticia-publicada')?.checked;
-    const imagenUrl   = form.querySelector('#noticia-imagen')?.value.split(/\r?\n/).map(url => url.trim()).filter(Boolean)[0] || '';
+    const imagenUrl   = safeUrl(form.querySelector('#noticia-imagen')?.value.split(/\r?\n/).map(url => url.trim()).filter(Boolean)[0] || '', { allowRelative: false });
 
     const cat = {
       nombre: categoryOption?.dataset.nombre || 'Sin categoría',
@@ -268,7 +272,7 @@ function formatNewsCard(noticia) {
   const titulo = sanitize(noticia.titulo    || 'Sin título');
   const texto  = sanitize(String(noticia.descripcion || noticia.texto || '').substring(0, 170));
   const fecha  = sanitize(String(noticia.fecha  || ''));
-  const imagen = sanitize(noticia.imagen || noticia.imagen_url || '');
+  const imagen = sanitize(safeUrl(noticia.imagen || noticia.imagen_url || '', { allowRelative: false }));
   const imgHtml = imagen
     ? `<img src="${imagen}" alt="Imagen" loading="lazy" onerror="this.onerror=null;this.src='logo_jefatura.jpg'">`
     : '<div class="pn-imagen-placeholder">🖼️</div>';
@@ -649,7 +653,7 @@ function initAdminAccessGate() {
     try {
       const result = await request('/noticias/admin/verify-token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         credentials: 'same-origin',
         body: JSON.stringify({ token })
       });
@@ -671,6 +675,7 @@ function initAdminAccessGate() {
   logoutButton?.addEventListener('click', () => {
     request('/noticias/admin/session', {
       method: 'DELETE',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
       credentials: 'same-origin'
     }).catch(error => handleError(error, 'adminLogout'));
     lockAdminPanel({ gate, panel, status, logoutButton, tokenInput, errorMessage });
@@ -1043,7 +1048,7 @@ function renderNewsPreviews() {
     const item = document.createElement('div');
     item.className = 'upload-preview-item';
     const image = document.createElement('img');
-    image.src = url;
+    image.src = safeUrl(url, { allowRelative: false });
     image.alt = `Vista previa de foto ${index + 1}`;
     image.loading = 'lazy';
     const remove = document.createElement('button');
@@ -1073,7 +1078,7 @@ function renderActivityPreviews() {
     item.className = 'upload-preview-item';
 
     const image = document.createElement('img');
-    image.src = url;
+    image.src = safeUrl(url, { allowRelative: false });
     image.alt = `Foto ${index + 1}`;
     image.loading = 'lazy';
 

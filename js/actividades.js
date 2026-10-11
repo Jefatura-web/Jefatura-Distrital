@@ -4,7 +4,7 @@
  *          carrusel con dots + swipe + teclado.
  */
 
-import { apiFetch, getElement, sanitize, handleError } from './utils.js';
+import { apiFetch, getElement, safeUrl, sanitize, handleError } from './utils.js';
 
 export const NIVELES = {
   'inicial':      { nombre: 'Nivel Inicial',       icono: '🧸' },
@@ -494,7 +494,7 @@ function renderGrillaGrados() {
 }
 
 function cardGrado(actividad) {
-  const primeraImg = (actividad.imagenes && actividad.imagenes[0]) || '';
+  const primeraImg = safeUrl((actividad.imagenes && actividad.imagenes[0]) || '', { allowRelative: false });
   const cantFotos  = (actividad.imagenes || []).length;
 
   const imgHtml = primeraImg
@@ -531,7 +531,7 @@ function mostrarDetalle(actividad) {
 
   const slides = imagenes.map((url, i) => `
     <div class="foto-slide">
-      <img src="${sanitize(url)}" alt="Foto ${i+1} de ${total}"
+      <img src="${sanitize(safeUrl(url, { allowRelative: false }))}" alt="Foto ${i+1} de ${total}"
            loading="${i === 0 ? 'eager' : 'lazy'}"
            onerror="this.onerror=null;this.style.opacity='0'">
     </div>`).join('');

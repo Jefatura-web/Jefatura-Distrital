@@ -5,7 +5,7 @@
  */
 
 const express = require('express');
-const { requireAuth } = require('./noticiasController');
+const { requireAuth, requireCsrf } = require('./adminAuth');
 
 let db = null;
 
@@ -664,10 +664,10 @@ router.get('/pagina', (req, res) => getAll(req, res, { paginated: true }));
 router.get('/', getAll);                                    // ?nivel=inicial&anio=2026&mes=2026-04
 router.get('/admin/deleted', requireAuth, getDeletedAdmin);
 router.get('/admin/list', requireAuth, getAllAdmin);         // /admin/list, no /admin (ver nota sobre shadowing en noticiasRoutes.js)
-router.post('/admin/:id/restore', requireAuth, restore);
-router.post('/', requireAuth, create);
-router.put('/:id', requireAuth, update);
-router.delete('/:id', requireAuth, remove);
+router.post('/admin/:id/restore', requireAuth, requireCsrf, restore);
+router.post('/', requireAuth, requireCsrf, create);
+router.put('/:id', requireAuth, requireCsrf, update);
+router.delete('/:id', requireAuth, requireCsrf, remove);
 // La ruta dinámica debe ir después de /admin/list para evitar que "admin" se
 // trate como un ID de actividad.
 router.get('/:id', getById);

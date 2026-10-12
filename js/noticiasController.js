@@ -34,18 +34,25 @@ function attachImagenes(noticias, callback) {
 
   const ids = noticias.map(noticia => noticia.id);
   db.query(
-    'SELECT noticia_id, imagen_url FROM noticias_imagenes WHERE noticia_id IN (?) ORDER BY noticia_id, orden ASC, id ASC',
+    'SELECT noticia_id, imagen_url, public_id FROM noticias_imagenes WHERE noticia_id IN (?) ORDER BY noticia_id, orden ASC, id ASC',
     [ids],
     (err, rows) => {
       if (err) return callback(err);
       const imagesByNews = new Map();
       (rows || []).forEach(row => {
         if (!imagesByNews.has(row.noticia_id)) imagesByNews.set(row.noticia_id, []);
-        imagesByNews.get(row.noticia_id).push(row.imagen_url);
+        imagesByNews.get(row.noticia_id).push({ url: row.imagen_url, public_id: row.public_id || null });
       });
       callback(null, noticias.map(noticia => ({
         ...noticia,
-        imagenes: imagesByNews.get(noticia.id) || (noticia.imagen ? [noticia.imagen] : [])
+        imagenes: (imagesByNews.get(noticia.id) || (noticia.imagen ? [{
+          url: noticia.imagen,
+          public_id: noticia.imagen_public_id || null
+        }] : [])).map(image => image.url),
+        imagenes_detalle: imagesByNews.get(noticia.id) || (noticia.imagen ? [{
+          url: noticia.imagen,
+          public_id: noticia.imagen_public_id || null
+        }] : [])
       })));
     }
   );
@@ -53,13 +60,19 @@ function attachImagenes(noticias, callback) {
 
 function normalizeNewsImages(images, legacyImageUrl) {
   const source = Array.isArray(images) ? images : (legacyImageUrl ? [legacyImageUrl] : []);
-  return source.map(url => String(url || '').trim()).filter(Boolean);
+  return source.map(image => {
+    if (typeof image === 'string') return { url: image.trim(), public_id: null };
+    return {
+      url: String(image?.url || '').trim(),
+      public_id: String(image?.public_id || '').trim() || null
+    };
+  }).filter(image => image.url);
 }
 
 function insertNewsImages(noticiaId, images, callback) {
   if (images.length === 0) return callback(null);
-  const values = images.map((url, order) => [noticiaId, url.substring(0, 500), order]);
-  db.query('INSERT INTO noticias_imagenes (noticia_id, imagen_url, orden) VALUES ?', [values], callback);
+  const values = images.map((image, order) => [noticiaId, image.url.substring(0, 500), image.public_id, order]);
+  db.query('INSERT INTO noticias_imagenes (noticia_id, imagen_url, public_id, orden) VALUES ?', [values], callback);
 }
 
 function replaceNewsImages(noticiaId, images, callback) {
@@ -303,8 +316,11 @@ function validateNoticiaData(data, isUpdate = false) {
   if (data.imagenes !== undefined) {
     if (!Array.isArray(data.imagenes)) {
       errors.push('imagenes debe ser un array de URLs');
-    } else if (data.imagenes.some(url => typeof url !== 'string' || url.trim().length > 500)) {
-      errors.push('Cada URL de imagen debe ser texto y tener como máximo 500 caracteres');
+    } else if (data.imagenes.some(image => {
+      const url = typeof image === 'string' ? image : image?.url;
+      return typeof url !== 'string' || url.trim().length > 500;
+    })) {
+      errors.push('Cada imagen debe tener una URL de texto de hasta 500 caracteres');
     }
   }
 
@@ -389,6 +405,7 @@ function getAll(req, res) {
       n.texto,
       n.fecha,
       n.imagen_url AS imagen,
+      n.imagen_public_id AS imagen_public_id,
       n.destacada,
       n.publicada,
       n.created_at,
@@ -519,6 +536,7 @@ function getById(req, res) {
       n.texto,
       n.fecha,
       n.imagen_url AS imagen,
+      n.imagen_public_id AS imagen_public_id,
       n.destacada,
       n.created_at,
       c.nombre AS categoria
@@ -599,6 +617,7 @@ function getAllAdmin(req, res) {
       n.texto,
       n.fecha,
       n.imagen_url AS imagen,
+      n.imagen_public_id AS imagen_public_id,
       n.destacada,
       n.publicada,
       n.created_at,
@@ -654,6 +673,7 @@ function getByIdAdmin(req, res) {
       n.texto,
       n.fecha,
       n.imagen_url AS imagen,
+      n.imagen_public_id AS imagen_public_id,
       n.destacada,
       n.publicada,
       n.categoria_id,
@@ -705,6 +725,7 @@ function getBySlug(req, res) {
       n.texto,
       n.fecha,
       n.imagen_url AS imagen,
+      n.imagen_public_id AS imagen_public_id,
       n.destacada,
       n.publicada,
       n.created_at,
@@ -848,10 +869,10 @@ function create(req, res) {
     return res.status(400).json({ error: 'categoria_id debe ser un número entero' });
   }
 
-  if (sanitizedData.imagenes.some(url => url.length > 500)) {
+  if (sanitizedData.imagenes.some(image => image.url.length > 500)) {
     return res.status(400).json({ error: 'Cada URL de imagen debe tener como máximo 500 caracteres' });
   }
-  sanitizedData.imagen_url = sanitizedData.imagenes[0] || null;
+  sanitizedData.imagen_url = sanitizedData.imagenes[0]?.url || null;
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(sanitizedData.fecha)) {
     return res.status(400).json({ error: 'fecha debe estar en formato YYYY-MM-DD' });
@@ -866,8 +887,8 @@ function create(req, res) {
     sanitizedData.slug = uniqueSlug;
 
     db.query(
-      `INSERT INTO noticias (titulo, slug, descripcion, texto, categoria_id, fecha, imagen_url, destacada, publicada)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO noticias (titulo, slug, descripcion, texto, categoria_id, fecha, imagen_url, imagen_public_id, destacada, publicada)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         sanitizedData.titulo,
         sanitizedData.slug,
@@ -876,6 +897,7 @@ function create(req, res) {
         sanitizedData.categoria_id,
         sanitizedData.fecha,
         sanitizedData.imagen_url,
+        sanitizedData.imagenes[0]?.public_id || null,
         sanitizedData.destacada,
         sanitizedData.publicada
       ],
@@ -918,6 +940,7 @@ function create(req, res) {
           n.texto,
           n.fecha,
           n.imagen_url AS imagen,
+          n.imagen_public_id AS imagen_public_id,
           n.destacada,
           n.publicada,
           n.created_at,
@@ -983,7 +1006,7 @@ function update(req, res) {
   const sanitizedImages = imagenes === undefined
     ? (imagen_url === undefined ? null : normalizeNewsImages(undefined, imagen_url))
     : normalizeNewsImages(imagenes, imagen_url);
-  if (sanitizedImages?.some(url => url.length > 500)) {
+  if (sanitizedImages?.some(image => image.url.length > 500)) {
     return res.status(400).json({ error: 'Cada URL de imagen debe tener como máximo 500 caracteres' });
   }
 
@@ -1021,10 +1044,13 @@ function update(req, res) {
 
   if (sanitizedImages !== null) {
     updates.push('imagen_url = ?');
-    params.push(sanitizedImages[0] || null);
+    params.push(sanitizedImages[0]?.url || null);
+    updates.push('imagen_public_id = ?');
+    params.push(sanitizedImages[0]?.public_id || null);
   } else if (imagen_url !== undefined) {
     updates.push('imagen_url = ?');
     params.push(imagen_url ? String(imagen_url).trim().substring(0, 500) : null);
+    updates.push('imagen_public_id = NULL');
   }
 
   if (destacada !== undefined) {
@@ -1092,6 +1118,7 @@ function update(req, res) {
         n.texto,
         n.fecha,
         n.imagen_url AS imagen,
+        n.imagen_public_id AS imagen_public_id,
         n.destacada,
         n.publicada,
         n.created_at,
@@ -1167,7 +1194,8 @@ function getDeletedAdmin(req, res) {
   const pagination = getPagination(req.query);
   db.query(
     `SELECT n.id, n.titulo, n.slug, n.descripcion, n.texto, n.fecha,
-            n.imagen_url AS imagen, n.deleted_at, c.nombre AS categoria,
+            n.imagen_url AS imagen, n.imagen_public_id AS imagen_public_id,
+            n.deleted_at, c.nombre AS categoria,
             c.icono AS categoria_icono, n.categoria_id
      FROM noticias n
      LEFT JOIN categorias c ON n.categoria_id = c.id

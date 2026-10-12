@@ -112,8 +112,39 @@ FROM noticias
 WHERE imagen_url IS NOT NULL
   AND imagen_url <> '';
 
+CREATE TABLE IF NOT EXISTS actividades_imagenes (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  actividad_id  INT NOT NULL,
+  imagen_url    VARCHAR(500) NOT NULL,
+  orden         INT DEFAULT 0,
+  FOREIGN KEY (actividad_id) REFERENCES actividades_inspectores(id) ON DELETE CASCADE,
+  INDEX idx_actividad_id (actividad_id)
+);
+
 ALTER TABLE actividades_inspectores
   ADD COLUMN escuela VARCHAR(255) NULL;
+
+ALTER TABLE noticias
+  ADD COLUMN imagen_public_id VARCHAR(255) NULL,
+  ADD INDEX idx_noticias_imagen_public_id (imagen_public_id);
+
+ALTER TABLE noticias_imagenes
+  ADD COLUMN public_id VARCHAR(255) NULL,
+  ADD INDEX idx_noticias_imagenes_public_id (public_id);
+
+ALTER TABLE actividades_imagenes
+  ADD COLUMN public_id VARCHAR(255) NULL,
+  ADD INDEX idx_actividades_imagenes_public_id (public_id);
+
+CREATE TABLE IF NOT EXISTS cloudinary_assets (
+  public_id   VARCHAR(255) NOT NULL PRIMARY KEY,
+  secure_url  VARCHAR(500) NOT NULL,
+  created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE cloudinary_assets
+  ADD COLUMN orphaned_at DATETIME NULL,
+  ADD INDEX idx_cloudinary_assets_orphaned (orphaned_at);
 
 CREATE TABLE IF NOT EXISTS admin_sessions (
   session_hash CHAR(64) NOT NULL PRIMARY KEY,
@@ -123,7 +154,7 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
 );
 ```
 
-La tabla `admin_sessions` es necesaria antes del próximo deploy para habilitar el acceso al panel. El esquema completo también la crea.
+Este bloque es para bases ya existentes: ejecutalo una sola vez antes del deploy nuevo. Si alguna columna o índice ya existe, omití solo esa adición. Las tablas `admin_sessions` y `cloudinary_assets`, y las columnas de identificador de imagen, son necesarias para la versión nueva. El esquema completo también las crea.
 
 ### 3.2 Subir el proyecto a GitHub
 
@@ -171,6 +202,9 @@ Conservá `BACKUP_ENCRYPTION_KEY` por separado del respaldo: sin esa clave los a
 - `GET /healthz` confirma que el proceso está vivo.
 - `GET /readyz` confirma que también puede consultar TiDB; Render usa esta ruta para el health check.
 - Ante un error del servidor, la respuesta incluye un `requestId`. Usalo para localizar el registro asociado; los logs no deben incluir tokens, cookies ni claves.
+- El panel consulta el uso reportado por Cloudinary y muestra avisos desde el 70 %, 85 % y 95 % en almacenamiento, ancho de banda, transformaciones y créditos cuando Cloudinary informa esa métrica. El servidor también registra avisos cada seis horas. Cloudinary actualiza estos datos periódicamente, así que los avisos no son un bloqueo preventivo ni una garantía de disponibilidad.
+- Si falla una carga de imágenes, el panel informa el error; se puede guardar la noticia o actividad sin esa foto y volver a subirla más adelante.
+- Las imágenes cargadas desde la nueva versión se registran con su `public_id`. Cada 15 minutos la tarea de mantenimiento detecta las no referenciadas y, tras 30 días de gracia, las elimina; si Cloudinary o la base fallan, el siguiente ciclo vuelve a intentar el trabajo. Las imágenes ya existentes, sin `public_id` registrado, no se eliminan automáticamente; esto evita borrar recursos que no se puedan identificar con certeza.
 
 Las fechas visibles se presentan en español de Argentina y respetan el día de calendario local, sin convertir fechas sin hora a UTC.
 

@@ -923,6 +923,22 @@ body.admin-page{background:var(--bg);font-family:Inter, system-ui, Arial, sans-s
 .btn-upload-img input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .upload-status { min-height: 20px; color: #17683a; font-size: 13px; font-weight: 600; }
 .upload-status-error { color: var(--danger); }
+.cloudinary-usage-alert {
+  max-width: 1200px;
+  margin: 16px auto;
+  padding: 14px 18px;
+  border: 1px solid #e3a008;
+  border-radius: 10px;
+  background: #fff8db;
+  color: #694b00;
+}
+.cloudinary-usage-alert p { margin: 5px 0; }
+.cloudinary-usage-alert small { color: #665a3d; }
+.cloudinary-usage-alert.cloudinary-usage-critical {
+  border-color: #c53030;
+  background: #fff0f0;
+  color: #8a1c1c;
+}
 .upload-preview-thumb { margin-top: 10px; min-height: 0; }
 .upload-preview-thumb img { display: block; width: 96px; height: 72px; object-fit: cover; border-radius: 8px; border: 1px solid var(--borde); }
 .upload-preview-list { max-width: 100%; }

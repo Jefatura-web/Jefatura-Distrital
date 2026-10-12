@@ -19,6 +19,7 @@ jobs:
           node --check js/server.js &&
           node --check js/server.config.js &&
           node --check js/adminAuth.js &&
+          node --check js/mediaStorage.js &&
           node --check js/noticiasController.js &&
           node --check js/noticiasRoutes.js &&
           node --check js/actividadesController.js &&

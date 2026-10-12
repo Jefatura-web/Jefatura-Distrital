@@ -106,7 +106,7 @@ function attachImagenes(actividades, callback) {
 
   const ids = actividades.map(a => a.id);
   db.query(
-    'SELECT actividad_id, imagen_url, orden FROM actividades_imagenes WHERE actividad_id IN (?) ORDER BY actividad_id, orden ASC, id ASC',
+    'SELECT actividad_id, imagen_url, public_id, orden FROM actividades_imagenes WHERE actividad_id IN (?) ORDER BY actividad_id, orden ASC, id ASC',
     [ids],
     (err, rows) => {
       if (err) return callback(err);
@@ -114,12 +114,13 @@ function attachImagenes(actividades, callback) {
       const porActividad = {};
       (rows || []).forEach(row => {
         if (!porActividad[row.actividad_id]) porActividad[row.actividad_id] = [];
-        porActividad[row.actividad_id].push(row.imagen_url);
+        porActividad[row.actividad_id].push({ url: row.imagen_url, public_id: row.public_id || null });
       });
 
       const conImagenes = actividades.map(a => ({
         ...a,
-        imagenes: porActividad[a.id] || []
+        imagenes: (porActividad[a.id] || []).map(image => image.url),
+        imagenes_detalle: porActividad[a.id] || []
       }));
 
       callback(null, conImagenes);
@@ -503,7 +504,10 @@ function create(req, res) {
   };
 
   const imagenesLimpias = Array.isArray(imagenes)
-    ? imagenes.map(u => String(u || '').trim()).filter(u => u.length > 0).slice(0, 30)
+    ? imagenes.map(image => typeof image === 'string'
+      ? { url: image.trim(), public_id: null }
+      : { url: String(image?.url || '').trim(), public_id: String(image?.public_id || '').trim() || null })
+      .filter(image => image.url.length > 0).slice(0, 30)
     : [];
 
   db.query(
@@ -525,9 +529,9 @@ function create(req, res) {
         return res.status(201).json({ ok: true, id: actividadId, message: 'Actividad creada exitosamente' });
       }
 
-      const values = imagenesLimpias.map((url, idx) => [actividadId, url.substring(0, 500), idx]);
+      const values = imagenesLimpias.map((image, idx) => [actividadId, image.url.substring(0, 500), image.public_id, idx]);
       db.query(
-        'INSERT INTO actividades_imagenes (actividad_id, imagen_url, orden) VALUES ?',
+        'INSERT INTO actividades_imagenes (actividad_id, imagen_url, public_id, orden) VALUES ?',
         [values],
         (imgErr) => {
           if (imgErr) {
@@ -586,15 +590,18 @@ function update(req, res) {
     if (imagenes === undefined) return cb(null);
 
     const imagenesLimpias = Array.isArray(imagenes)
-      ? imagenes.map(u => String(u || '').trim()).filter(u => u.length > 0).slice(0, 30)
+      ? imagenes.map(image => typeof image === 'string'
+        ? { url: image.trim(), public_id: null }
+        : { url: String(image?.url || '').trim(), public_id: String(image?.public_id || '').trim() || null })
+        .filter(image => image.url.length > 0).slice(0, 30)
       : [];
 
     db.query('DELETE FROM actividades_imagenes WHERE actividad_id = ?', [id], (delErr) => {
       if (delErr) return cb(delErr);
       if (imagenesLimpias.length === 0) return cb(null);
 
-      const values = imagenesLimpias.map((url, idx) => [id, url.substring(0, 500), idx]);
-      db.query('INSERT INTO actividades_imagenes (actividad_id, imagen_url, orden) VALUES ?', [values], cb);
+      const values = imagenesLimpias.map((image, idx) => [id, image.url.substring(0, 500), image.public_id, idx]);
+      db.query('INSERT INTO actividades_imagenes (actividad_id, imagen_url, public_id, orden) VALUES ?', [values], cb);
     });
   };
 

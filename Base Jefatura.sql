@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS
     `categoria_id` INT,
     `fecha` DATE NOT NULL,
     `imagen_url` VARCHAR(500),
+    `imagen_public_id` VARCHAR(255) NULL,
     `destacada` BOOLEAN DEFAULT FALSE,
     `publicada` BOOLEAN DEFAULT TRUE,
     `deleted_at` TIMESTAMP NULL DEFAULT NULL,
@@ -66,6 +67,7 @@ CREATE TABLE IF NOT EXISTS
     INDEX `idx_publicada` (`publicada`),
     INDEX `idx_deleted_at` (`deleted_at`),
     INDEX `idx_created_at` (`created_at`),
+    INDEX `idx_noticias_imagen_public_id` (`imagen_public_id`),
     FULLTEXT INDEX `ft_titulo` (`titulo`),
     FULLTEXT INDEX `ft_texto` (`texto`),
     FULLTEXT INDEX `ft_descripcion` (`descripcion`)
@@ -75,7 +77,9 @@ CREATE TABLE IF NOT EXISTS noticias_imagenes (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   noticia_id  INT NOT NULL,
   imagen_url  VARCHAR(500) NOT NULL,
+  public_id   VARCHAR(255) NULL,
   orden       INT NOT NULL DEFAULT 0,
+  INDEX idx_noticias_imagenes_public_id (public_id),
   FOREIGN KEY (noticia_id) REFERENCES noticias(id) ON DELETE CASCADE,
   UNIQUE KEY uq_noticia_imagenes_orden (noticia_id, orden)
 );
@@ -139,7 +143,17 @@ CREATE TABLE IF NOT EXISTS actividades_imagenes (
   id            INT AUTO_INCREMENT PRIMARY KEY,
   actividad_id  INT NOT NULL,
   imagen_url    VARCHAR(500) NOT NULL,
+  public_id     VARCHAR(255) NULL,
   orden         INT DEFAULT 0,
+  INDEX idx_actividades_imagenes_public_id (public_id),
   FOREIGN KEY (actividad_id) REFERENCES actividades_inspectores(id) ON DELETE CASCADE,
   INDEX idx_actividad_id (actividad_id)
+);
+
+CREATE TABLE IF NOT EXISTS cloudinary_assets (
+  public_id   VARCHAR(255) NOT NULL PRIMARY KEY,
+  secure_url  VARCHAR(500) NOT NULL,
+  created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  orphaned_at DATETIME NULL,
+  INDEX idx_cloudinary_assets_orphaned (orphaned_at)
 );

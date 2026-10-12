@@ -15,6 +15,7 @@ const config = require('./server.config');
 const noticiasController = require('./noticiasController');
 const actividadesController = require('./actividadesController');
 const adminAuth = require('./adminAuth');
+const mediaStorage = require('./mediaStorage');
 
 // ===============================
 // INICIALIZAR APLICACIÓN
@@ -56,6 +57,7 @@ const db = mysql.createPool({
 noticiasController.setDatabase(db);
 actividadesController.setDatabase(db);
 adminAuth.setDatabase(db);
+mediaStorage.setDatabase(db);
 
 let server = null;
 const startedAt = new Date().toISOString();
@@ -70,9 +72,34 @@ const purgeDeletedContent = () => {
   actividadesController.purgeExpiredDeleted(err => {
     if (err) console.error('[maintenance] No se pudieron purgar actividades vencidas:', err.code || err.name);
   });
+  mediaStorage.cleanupOrphanedAssets()
+    .then(deleted => {
+      if (deleted) console.log(`[maintenance] Se eliminaron ${deleted} imagen(es) huérfana(s) de Cloudinary.`);
+    })
+    .catch(error => console.error('[maintenance] No se pudieron limpiar imágenes huérfanas:', error.http_code || error.code || error.name));
 };
 const purgeTimer = setInterval(purgeDeletedContent, 15 * 60 * 1000);
 purgeTimer.unref();
+
+async function checkCloudinaryUsage() {
+  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY ||
+      !process.env.CLOUDINARY_API_SECRET) return;
+  try {
+    const usage = await mediaStorage.getUsage();
+    for (const metric of usage.metrics.filter(item => item.level !== 'ok')) {
+      console.warn(JSON.stringify({
+        event: 'cloudinary_usage_warning',
+        metric: metric.key,
+        percent: Number(metric.percentage.toFixed(1)),
+        level: metric.level
+      }));
+    }
+  } catch (error) {
+    console.error('[monitoring] No se pudo consultar el consumo de Cloudinary:', error.http_code || error.code || error.name);
+  }
+}
+const usageTimer = setInterval(checkCloudinaryUsage, 6 * 60 * 60 * 1000);
+usageTimer.unref();
 
 const startServer = () => {
   app.get('/healthz', (_req, res) => res.json({ status: 'ok' }));
@@ -233,6 +260,7 @@ db.getConnection((err, connection) => {
   console.log('✅ Conectado a MySQL/TiDB:', `${config.database.host}:${config.database.port}/${config.database.database}`);
   connection.release();
   purgeDeletedContent();
+  checkCloudinaryUsage();
   startServer();
 });
 

@@ -9,9 +9,17 @@ import { cargarCategorias, cargarNoticias, renderNoticiasList, showAppAlert } fr
 import { renderCalendar } from './calendar.js';
 
 let adminAuthenticated = false;
+const uploadedImageIds = new Map();
 const normalizeToken = value => String(value || '').replace(/^Bearer\s+/i, '').trim();
 const getToken = () => adminAuthenticated;
 const setToken = value => { adminAuthenticated = Boolean(value); return adminAuthenticated; };
+
+function imageEntries(text) {
+  return parseImagenes(text).map(url => ({
+    url,
+    public_id: uploadedImageIds.get(url) || null
+  }));
+}
 
 async function apiFetch(path, options = {}) {
   const headers = new Headers(options.headers || {});
@@ -147,7 +155,7 @@ async function handleFormSubmit(event, onSuccess) {
     texto:       formData.get('texto'),
     categoria_id: parseInt(formData.get('categoria_id'), 10),
     fecha:       formData.get('fecha'),
-    imagenes:    parseImagenes(formData.get('imagenes')),
+    imagenes:    imageEntries(formData.get('imagenes')),
     imagen_url:  parseImagenes(formData.get('imagenes'))[0] || null,
     destacada:   formData.get('destacada') === 'on',
     publicada:   formData.get('publicada') === 'on'
@@ -372,7 +380,11 @@ async function handleEdit(id) {
     getElement('#noticia-texto').value       = noticia.texto      || '';
     getElement('#noticia-categoria').value   = noticia.categoria_id || '';
     getElement('#noticia-fecha').value       = noticia.fecha      || '';
-    getElement('#noticia-imagen').value      = (noticia.imagenes || (noticia.imagen ? [noticia.imagen] : [])).join('\n');
+    const newsImages = noticia.imagenes_detalle || (noticia.imagenes || (noticia.imagen ? [noticia.imagen] : [])).map(url => ({ url }));
+    newsImages.forEach(image => {
+      if (image.public_id) uploadedImageIds.set(image.url, image.public_id);
+    });
+    getElement('#noticia-imagen').value = newsImages.map(image => image.url).join('\n');
     renderNewsPreviews();
     getElement('#noticia-destacada').checked = !!noticia.destacada;
     getElement('#noticia-publicada').checked = noticia.publicada === 1 || noticia.publicada === true;
@@ -705,12 +717,45 @@ async function showAdminPanel({ gate, panel, status, logoutButton }) {
   if (status) status.textContent = 'Sesión activa';
   if (logoutButton) logoutButton.hidden = false;
   await Promise.all([
+    loadCloudinaryUsage(),
     cargarCategorias().catch(error => {
       showAppAlert('No se pudieron cargar las categorías. Revisá la conexión antes de crear una noticia.', 'error');
     }),
     loadAdminNoticias(),
     loadAdminActividades()
   ]);
+}
+
+async function loadCloudinaryUsage() {
+  const alert = getElement('#cloudinary-usage-alert');
+  if (!alert) return;
+  alert.hidden = false;
+  alert.textContent = 'Consultando el consumo de almacenamiento de imágenes…';
+  try {
+    const result = await apiFetch('/upload/usage');
+    const alertMetrics = (result.metrics || []).filter(metric => metric.level !== 'ok');
+    if (alertMetrics.length === 0) {
+      alert.hidden = true;
+      return;
+    }
+    const heading = document.createElement('strong');
+    heading.textContent = 'Atención: uso de Cloudinary';
+    const detail = document.createElement('p');
+    detail.textContent = alertMetrics.map(metric =>
+      `${metric.label}: ${metric.percentage.toFixed(1)} %`
+    ).join(' · ');
+    const date = document.createElement('small');
+    date.textContent = result.updatedAt
+      ? `Datos informados por Cloudinary al ${result.updatedAt}.`
+      : `Consulta realizada: ${new Date(result.checkedAt).toLocaleString('es-AR')}.`;
+    alert.replaceChildren(heading, detail, date);
+    alert.classList.toggle('cloudinary-usage-critical',
+      alertMetrics.some(metric => metric.level === 'critical' || metric.level === 'high'));
+  } catch (error) {
+    handleError(error, 'loadCloudinaryUsage');
+    alert.textContent = error?.body?.error || 'No se pudo consultar el consumo de Cloudinary. Revisalo en el panel del proveedor.';
+    alert.classList.remove('cloudinary-usage-critical');
+  }
 }
 
 function expireAdminSession(message) {
@@ -726,6 +771,7 @@ function expireAdminSession(message) {
 
 function lockAdminPanel({ gate, panel, status, logoutButton, tokenInput, errorMessage }) {
   setToken(false);
+  uploadedImageIds.clear();
   if (panel) {
     panel.hidden = true;
     panel.setAttribute('aria-hidden', 'true');
@@ -821,7 +867,7 @@ async function handleActividadSubmit(event) {
     titulo: formData.get('titulo'),
     descripcion: formData.get('descripcion'),
     inspector_nombre: formData.get('inspector_nombre'),
-    imagenes: parseImagenes(formData.get('imagenes'))
+    imagenes: imageEntries(formData.get('imagenes'))
   };
 
   if (!data.nivel || !data.grado || !data.mes || !data.titulo) {
@@ -979,7 +1025,11 @@ function handleActividadEdit(actividad) {
   getElement('#actividad-titulo').value = actividad.titulo || '';
   getElement('#actividad-inspector').value = actividad.inspector_nombre || '';
   getElement('#actividad-descripcion').value = actividad.descripcion || '';
-  getElement('#actividad-imagenes').value = (actividad.imagenes || []).join('\n');
+  const activityImages = actividad.imagenes_detalle || (actividad.imagenes || []).map(url => ({ url }));
+  activityImages.forEach(image => {
+    if (image.public_id) uploadedImageIds.set(image.url, image.public_id);
+  });
+  getElement('#actividad-imagenes').value = activityImages.map(image => image.url).join('\n');
   renderActivityPreviews();
   const title = getElement('#actividad-form-title');
   if (title) title.textContent = 'Editar actividad';
@@ -1099,7 +1149,7 @@ function renderActivityPreviews() {
   });
 }
 
-async function uploadFile(file, token) {
+async function uploadFile(file) {
   const formData = new FormData();
   formData.append('image', file, file.name);
   const result = await apiFetch('/upload', {
@@ -1107,8 +1157,9 @@ async function uploadFile(file, token) {
     headers: { 'Authorization': `Bearer ${token}` },
     body: formData
   });
-  if (!result?.ok || !result.url) throw new Error(result?.error || 'El servidor no devolvió una URL de imagen.');
-  return result.url;
+  if (!result?.ok || !result.url || !result.public_id) throw new Error(result?.error || 'El servidor no devolvió los datos de la imagen.');
+  uploadedImageIds.set(result.url, result.public_id);
+  return result;
 }
 
 async function handleImageSelection(input) {
@@ -1130,7 +1181,7 @@ async function handleImageSelection(input) {
 
   const invalid = files.find(file => !ACCEPTED_IMAGE_TYPES.has(file.type) || file.size > MAX_IMAGE_SIZE);
   if (invalid) {
-    showUploadStatus(input, 'Usá fotos JPG, PNG, WebP, GIF, AVIF o HEIC de hasta 10 MB cada una.', true);
+    showUploadStatus(input, 'Usá fotos JPG, PNG, WebP, GIF, AVIF, HEIC o HEIF de hasta 10 MB cada una.', true);
     input.value = '';
     return;
   }
@@ -1142,14 +1193,14 @@ async function handleImageSelection(input) {
   try {
     for (const [index, file] of files.entries()) {
       showUploadStatus(input, `Subiendo ${index + 1} de ${files.length}: ${file.name}`);
-      const url = await uploadFile(file, token);
+      const image = await uploadFile(file);
       uploadedCount += 1;
       if (input.dataset.mode === 'append') {
-        target.value = [...parseImagenes(target.value), url].join('\n');
+        target.value = [...parseImagenes(target.value), image.url].join('\n');
         if (input.dataset.target === 'noticia-imagen') renderNewsPreviews();
         else renderActivityPreviews();
       } else {
-        target.value = url;
+        target.value = image.url;
         renderNewsPreviews();
       }
     }
@@ -1158,8 +1209,8 @@ async function handleImageSelection(input) {
     handleError(error, 'handleImageSelection');
     const detail = error?.body?.error || error.message || 'No se pudo subir la foto.';
     showUploadStatus(input, uploadedCount
-      ? `${uploadedCount} foto${uploadedCount === 1 ? '' : 's'} subida${uploadedCount === 1 ? '' : 's'}. ${detail}`
-      : detail, true);
+      ? `${uploadedCount} foto${uploadedCount === 1 ? '' : 's'} subida${uploadedCount === 1 ? '' : 's'}. ${detail} Podés guardar la noticia sin foto y volver a agregarla después.`
+      : `${detail} Podés guardar la noticia sin foto y volver a agregarla después.`, true);
   } finally {
     input.value = '';
   }

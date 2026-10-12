@@ -10,10 +10,10 @@
 
 const express    = require('express');
 const multer     = require('multer');
-const cloudinary = require('cloudinary').v2;
 const crypto     = require('crypto');
 const path       = require('path');
 const { requireAuth, requireCsrf } = require('./adminAuth');
+const mediaStorage = require('./mediaStorage');
 
 const router = express.Router();
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/heic', 'image/heif']);
@@ -49,30 +49,16 @@ const upload = multer({
   }
 });
 
-// ── Cloudinary ────────────────────────────────────────────────────────────────
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:    process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-  secure:     true
-});
-
-function subirACloudinary(buffer, nombreOriginal, detectedMime) {
-  return new Promise((resolve, reject) => {
-    const baseName = path.parse(String(nombreOriginal || 'imagen')).name
-      .replace(/[^a-zA-Z0-9_-]/g, '-')
-      .substring(0, 80) || 'imagen';
-    const publicId = `jefatura/${Date.now()}-${crypto.randomUUID()}-${baseName}`;
-    const stream   = cloudinary.uploader.upload_stream(
-      {
-        public_id: publicId,
-        resource_type: 'image',
-        format: detectedMime === 'image/gif' ? 'gif' : 'jpg',
-        transformation: [{ quality: 'auto' }]
-      },
-      (err, result) => { if (err) reject(err); else resolve(result); }
-    );
-    stream.end(buffer);
+async function subirACloudinary(buffer, nombreOriginal, detectedMime) {
+  const baseName = path.parse(String(nombreOriginal || 'imagen')).name
+    .replace(/[^a-zA-Z0-9_-]/g, '-')
+    .substring(0, 80) || 'imagen';
+  const publicId = `jefatura/${Date.now()}-${crypto.randomUUID()}-${baseName}`;
+  return mediaStorage.upload(buffer, {
+    public_id: publicId,
+    resource_type: 'image',
+    format: detectedMime === 'image/gif' ? 'gif' : 'jpg',
+    transformation: [{ quality: 'auto' }]
   });
 }
 
@@ -85,14 +71,21 @@ function cloudinaryConfigurado() {
 
 function mensajeErrorCloudinary(err) {
   const status = Number(err?.http_code);
-  if (status === 401 || status === 403) {
+  const providerMessage = String(err?.message || err?.error?.message || '');
+  if (/\b(quota|limit|credit|storage|bandwidth|plan)\b/i.test(providerMessage)) {
+    return 'Cloudinary informó que se alcanzó un límite de uso o del plan. Revisá el consumo en su panel; podés guardar la publicación sin foto y volver a intentarlo después.';
+  }
+  if (status === 401) {
     return 'Cloudinary rechazó las credenciales. Revisá CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY y CLOUDINARY_API_SECRET en Render.';
+  }
+  if (status === 403) {
+    return 'Cloudinary denegó la carga por permisos o una restricción de la cuenta. Revisá las credenciales y el consumo en el panel de Cloudinary.';
   }
   if (status === 400) {
     return 'Cloudinary rechazó el archivo. Probá convertir la foto a JPG, PNG o WebP y volver a subirla.';
   }
   if (status === 420 || status === 429) {
-    return 'Cloudinary alcanzó temporalmente el límite de cargas. Esperá unos minutos y volvé a intentarlo.';
+    return 'Cloudinary rechazó temporalmente la solicitud. Revisá su estado y volvé a intentarlo más tarde; también podés guardar la publicación sin foto.';
   }
   if (status >= 500) {
     return 'Cloudinary está teniendo un problema temporal. Volvé a intentarlo más tarde.';
@@ -125,13 +118,31 @@ router.post('/', requireAuth, requireCsrf, upload.single('image'), async (req, r
     if (imageUrl.protocol !== 'https:' || imageUrl.hostname !== 'res.cloudinary.com') {
       throw new Error('Cloudinary devolvió una dirección de imagen no válida.');
     }
-    res.json({ ok: true, url: imageUrl.href });
+    if (!result.public_id) throw new Error('Cloudinary no devolvió el identificador de la imagen.');
+    await mediaStorage.registerUploadedAsset(result.public_id, imageUrl.href);
+    res.json({ ok: true, url: imageUrl.href, public_id: result.public_id });
   } catch (err) {
     console.error('[upload] Error Cloudinary:', {
       httpCode: err?.http_code || null,
       name: err?.name || null
     });
     res.status(502).json({ ok: false, error: mensajeErrorCloudinary(err) });
+  }
+});
+
+router.get('/usage', requireAuth, async (_req, res) => {
+  if (!cloudinaryConfigurado()) {
+    return res.status(503).json({ ok: false, error: 'Cloudinary no está configurado.' });
+  }
+  try {
+    const usage = await mediaStorage.getUsage();
+    res.json({ ok: true, ...usage });
+  } catch (error) {
+    console.error('[cloudinary-usage] No se pudo consultar el consumo:', error.http_code || error.code || error.name);
+    res.status(503).json({
+      ok: false,
+      error: 'No se pudo consultar el consumo de Cloudinary. Revisalo en el panel de Cloudinary.'
+    });
   }
 });
 

@@ -468,7 +468,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   initActividadesForm();
   initImageUploads();
-  restoreAdminSession();
+  requireFreshAdminLogin();
 });
 
 function initAdminListControls() {
@@ -653,6 +653,9 @@ function initAdminAccessGate() {
   const logoutButton = getElement('#admin-logout');
   if (!form || !tokenInput || !errorMessage || !submitButton || !gate || !panel) return;
 
+  submitButton.disabled = true;
+  if (status) status.textContent = 'Cerrando la sesión anterior…';
+
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const token = normalizeToken(tokenInput.value);
@@ -684,28 +687,51 @@ function initAdminAccessGate() {
     }
   });
 
-  logoutButton?.addEventListener('click', () => {
-    request('/noticias/admin/session', {
-      method: 'DELETE',
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      credentials: 'same-origin'
-    }).catch(error => handleError(error, 'adminLogout'));
-    lockAdminPanel({ gate, panel, status, logoutButton, tokenInput, errorMessage });
+  logoutButton?.addEventListener('click', async () => {
+    logoutButton.disabled = true;
+    try {
+      await request('/noticias/admin/session', {
+        method: 'DELETE',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin'
+      });
+      lockAdminPanel({ gate, panel, status, logoutButton, tokenInput, errorMessage });
+    } catch (error) {
+      handleError(error, 'adminLogout');
+      showAppAlert('No se pudo cerrar la sesión. Revisá la conexión e intentá nuevamente.', 'error');
+    } finally {
+      logoutButton.disabled = false;
+    }
   });
 }
 
-async function restoreAdminSession() {
+async function requireFreshAdminLogin() {
   const gate = getElement('#admin-access-gate');
   const panel = getElement('#admin-panel');
   const status = getElement('.admin-status');
-  const logoutButton = getElement('#admin-logout');
+  const submitButton = getElement('#admin-access-submit');
+  const errorMessage = getElement('#admin-access-error');
+  if (!gate || !panel || !submitButton) return;
+
+  gate.hidden = false;
+  panel.hidden = true;
+  panel.setAttribute('aria-hidden', 'true');
+
   try {
-    const session = await request('/noticias/admin/session', { credentials: 'same-origin' });
-    if (!session?.ok) return;
-    setToken(true);
-    await showAdminPanel({ gate, panel, status, logoutButton });
+    await request('/noticias/admin/session', {
+      method: 'DELETE',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      credentials: 'same-origin'
+    });
+    if (status) status.textContent = 'Token requerido';
   } catch (error) {
-    if (error?.status !== 401) handleError(error, 'restoreAdminSession');
+    handleError(error, 'requireFreshAdminLogin');
+    if (errorMessage) {
+      errorMessage.textContent = 'No se pudo cerrar la sesión anterior. Revisá la conexión y recargá el panel antes de ingresar.';
+    }
+    return;
+  } finally {
+    if (!errorMessage?.textContent) submitButton.disabled = false;
   }
 }
 

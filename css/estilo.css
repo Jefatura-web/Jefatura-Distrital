@@ -104,8 +104,8 @@
     }
     .nav-toggle {
       display: none;
-      width: 42px;
-      height: 42px;
+      width: 44px;
+      height: 44px;
       border: 1px solid var(--borde);
       background: var(--blanco);
       color: var(--azul-marino);
@@ -119,7 +119,7 @@
       align-items: center;
       justify-content: center;
       gap: 8px;
-      min-height: 42px;
+      min-height: 44px;
       padding: 0 14px;
       border: 1px solid var(--borde);
       background: linear-gradient(135deg, #0d2154, #173774);
@@ -163,20 +163,22 @@
     cursor: pointer;
     border-radius: 8px;
   }
-  .admin-access .menu-btn:hover, .admin-access .menu-btn:focus { background: #f4f7fb; outline: none; }
+  .admin-access .menu-btn:hover, .admin-access .menu-btn:focus-visible { background: #f4f7fb; }
+  .admin-access .menu-btn:focus-visible { outline: 3px solid var(--celeste); outline-offset: 2px; }
   .btn-admin-open { background: linear-gradient(135deg, #2b6ab1, #1a4f8a); }
     .nav-toggle:hover,
     .nav-toggle:focus-visible {
       border-color: var(--celeste);
       background: #e8eef8;
-      outline: none;
     }
+    .nav-toggle:focus-visible { outline: 3px solid var(--celeste); outline-offset: 2px; }
     .btn-admin-access:hover,
     .btn-admin-access:focus-visible {
       transform: translateY(-1px);
       box-shadow: 0 12px 22px rgba(13, 33, 84, 0.24);
-      outline: none;
       background: linear-gradient(135deg, #173774, #1e4a97);
+      outline: 3px solid var(--celeste);
+      outline-offset: 2px;
     }
     .footer-admin-access { margin-left: auto; min-height: 38px; border-color: rgba(255,255,255,.28); }
     .boton-abc {
@@ -444,6 +446,9 @@
       justify-content: center;
     }
     .primary-nav a {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
       color: rgba(255,255,255,0.8);
       text-decoration: none;
       font-size: 14px;
@@ -460,8 +465,8 @@
       color: var(--dorado-claro);
       border-bottom-color: var(--dorado);
       background: rgba(255,255,255,0.05);
-      outline: none;
     }
+    .primary-nav a:focus-visible { outline: 3px solid var(--dorado-claro); outline-offset: -4px; }
 
     .card-noticia:focus-visible,
     .leer-mas:focus-visible,
@@ -1140,6 +1145,12 @@
         font-size: 12px;
       }
       .primary-nav { padding: 0 16px; }
+      .primary-nav {
+        display: none;
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+      }
       .primary-nav.open { display: flex; }
       .nav-toggle { display: block; }
       .widget[aria-labelledby="widget-inspectores"] .widget-header {
@@ -1548,9 +1559,9 @@
   display: none;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
   border: 1px solid rgba(255, 255, 255, .55);
   border-radius: 8px;
   background: transparent;
@@ -1732,6 +1743,7 @@
   max-width: 680px;
   width: 100%;
   max-height: 90vh;
+  max-height: 90dvh;
   overflow-y: auto;
   position: relative;
   box-shadow: 0 20px 60px rgba(13, 33, 84, 0.25);
@@ -1746,7 +1758,7 @@
   top: 12px;
   float: right;
   margin: 12px 12px 0 0;
-  width: 34px; height: 34px;
+  width: 44px; height: 44px;
   border-radius: 50%;
   border: none;
   background: rgba(13, 33, 84, 0.08);
@@ -1833,10 +1845,22 @@
   .nm-body { padding: 18px 18px 24px;   }
   .nm-galeria { padding: 18px 18px 0; }
   .nm-body h2 { font-size: 18px; }
-  .noticia-modal-content { border-radius: 14px; }
+  .noticia-modal { padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom)); }
+  .noticia-modal-content { max-height: 100dvh; border-radius: 14px; }
   .foto-nav { width: 32px; height: 32px; font-size: 18px; }
   .resumen-barras { gap: 3px; }
   .resumen-label, .resumen-count { font-size: 9px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .article-page {

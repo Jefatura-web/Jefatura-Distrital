@@ -33,9 +33,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ── Modal de noticias ─────────────────────────────────────────────────────────
 function initNoticiaModal() {
+  const modal = getElement('#modal-noticia');
+  if (!modal) return;
   getElement('#noticia-modal-cerrar')?.addEventListener('click', cerrarNoticiaModal);
-  getElement('#modal-noticia')?.addEventListener('click', e => {
-    if (e.target.id === 'modal-noticia') cerrarNoticiaModal();
+  modal.addEventListener('click', event => {
+    if (event.target === modal) cerrarNoticiaModal();
   });
 }
 
@@ -45,11 +47,43 @@ function initNavToggle() {
   const navMenu   = getElement('.primary-nav');
   if (!navToggle || !navMenu) return;
 
+  const mobileMenu = window.matchMedia('(max-width: 768px)');
+  const closeMenu = ({ restoreFocus = false } = {}) => {
+    navMenu.classList.remove('open');
+    navToggle.setAttribute('aria-expanded', 'false');
+    navToggle.setAttribute('aria-label', 'Abrir menú principal');
+    if (restoreFocus) navToggle.focus();
+  };
+  const syncMenu = event => {
+    if (!event.matches) closeMenu();
+    navToggle.setAttribute('aria-expanded', String(!event.matches));
+    navToggle.setAttribute('aria-label', event.matches ? 'Abrir menú principal' : 'Cerrar menú principal');
+  };
+  syncMenu(mobileMenu);
+  mobileMenu.addEventListener('change', syncMenu);
+
   navToggle.addEventListener('click', () => {
     const expanded = navToggle.getAttribute('aria-expanded') === 'true';
-    navToggle.setAttribute('aria-expanded', String(!expanded));
-    navMenu.classList.toggle('open');
+    const nextExpanded = !expanded;
+    navToggle.setAttribute('aria-expanded', String(nextExpanded));
+    navMenu.classList.toggle('open', nextExpanded);
     navToggle.setAttribute('aria-label', expanded ? 'Abrir menú principal' : 'Cerrar menú principal');
+  });
+  navMenu.querySelectorAll('a').forEach(link => {
+    link.addEventListener('click', () => {
+      if (mobileMenu.matches) closeMenu();
+    });
+  });
+  document.addEventListener('pointerdown', event => {
+    if (mobileMenu.matches && !navMenu.contains(event.target) && !navToggle.contains(event.target)) {
+      closeMenu();
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && mobileMenu.matches &&
+        navToggle.getAttribute('aria-expanded') === 'true') {
+      closeMenu({ restoreFocus: true });
+    }
   });
 }
 
@@ -58,13 +92,19 @@ function initInspectorMenu() {
   const menu = getElement('#inspectores-menu');
   if (!toggle || !menu) return;
 
+  const mobileMenu = window.matchMedia('(max-width: 768px)');
+  const closeMenu = ({ restoreFocus = false } = {}) => {
+    menu.hidden = true;
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-label', 'Abrir niveles de inspectores');
+    if (restoreFocus) toggle.focus();
+  };
   toggle.addEventListener('click', () => {
     const expanded = toggle.getAttribute('aria-expanded') === 'true';
     toggle.setAttribute('aria-expanded', String(!expanded));
     menu.hidden = expanded;
     toggle.setAttribute('aria-label', expanded ? 'Abrir niveles de inspectores' : 'Cerrar niveles de inspectores');
   });
-  const mobileMenu = window.matchMedia('(max-width: 768px)');
   const syncInspectorMenu = event => {
     const expanded = !event.matches;
     toggle.setAttribute('aria-expanded', String(expanded));
@@ -76,11 +116,20 @@ function initInspectorMenu() {
   menu.querySelectorAll('a').forEach(link => {
     link.addEventListener('click', () => {
       if (window.matchMedia('(max-width: 768px)').matches) {
-        menu.hidden = true;
-        toggle.setAttribute('aria-expanded', 'false');
-        toggle.setAttribute('aria-label', 'Abrir niveles de inspectores');
+        closeMenu();
       }
     });
+  });
+  document.addEventListener('pointerdown', event => {
+    if (mobileMenu.matches && !menu.contains(event.target) && !toggle.contains(event.target)) {
+      closeMenu();
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && mobileMenu.matches &&
+        toggle.getAttribute('aria-expanded') === 'true') {
+      closeMenu({ restoreFocus: true });
+    }
   });
 }
 

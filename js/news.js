@@ -374,6 +374,7 @@ function showErrorMessage(message) {
 
 // ── Modal de lectura de noticias ──────────────────────────────────────────────
 let _noticiaKeyHandler = null;
+let _noticiaReturnFocus = null;
 
 export function mostrarNoticiaModal(noticia) {
   const modal = getElement('#modal-noticia');
@@ -404,9 +405,34 @@ export function mostrarNoticiaModal(noticia) {
   modal.classList.add('visible');
   modal.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
+  _noticiaReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  getElement('#noticia-modal-cerrar')?.focus();
 
   if (_noticiaKeyHandler) document.removeEventListener('keydown', _noticiaKeyHandler);
-  _noticiaKeyHandler = e => { if (e.key === 'Escape') cerrarNoticiaModal(); };
+  _noticiaKeyHandler = event => {
+    if (event.key === 'Escape') {
+      cerrarNoticiaModal();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const focusable = [...modal.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+      .filter(element => element.getClientRects().length > 0);
+    if (focusable.length === 0) {
+      event.preventDefault();
+      modal.querySelector('[role="dialog"]')?.focus();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
   document.addEventListener('keydown', _noticiaKeyHandler);
 }
 
@@ -420,4 +446,6 @@ export function cerrarNoticiaModal() {
     document.removeEventListener('keydown', _noticiaKeyHandler);
     _noticiaKeyHandler = null;
   }
+  if (_noticiaReturnFocus?.isConnected) _noticiaReturnFocus.focus();
+  _noticiaReturnFocus = null;
 }

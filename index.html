@@ -37,12 +37,13 @@
         <span class="search-hint" aria-hidden="true">🔎</span>
       </form>
 
-      <button id="nav-toggle" class="nav-toggle" aria-expanded="false" aria-label="Abrir menú principal">☰</button>
+      <button id="nav-toggle" class="nav-toggle" type="button" aria-expanded="false"
+              aria-controls="primary-nav" aria-label="Abrir menú principal">☰</button>
     </div>
   </header>
 
   <!-- NAVEGACIÓN PRINCIPAL -->
-  <nav class="primary-nav" role="navigation" aria-label="Menú principal">
+  <nav id="primary-nav" class="primary-nav" aria-label="Menú principal">
     <a href="#" class="active" aria-current="page">Inicio</a>
     <a href="#">Analíticos Incompletos</a>
     <a href="#">CUPOF</a>
@@ -294,7 +295,7 @@
   </footer>
   <!-- Modal de lectura de noticias -->
   <div id="modal-noticia" class="noticia-modal" aria-hidden="true">
-    <div class="noticia-modal-content" role="dialog" aria-modal="true" aria-labelledby="noticia-modal-titulo">
+    <div class="noticia-modal-content" role="dialog" aria-modal="true" aria-labelledby="noticia-modal-titulo" tabindex="-1">
       <button id="noticia-modal-cerrar" class="noticia-modal-cerrar" type="button" aria-label="Cerrar">×</button>
       <div id="noticia-modal-body"></div>
     </div>

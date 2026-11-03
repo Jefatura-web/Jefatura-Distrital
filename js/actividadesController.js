@@ -370,7 +370,7 @@ function getAllAdmin(req, res) {
     return res.status(500).json({ error: 'Conexión a BD no disponible' });
   }
 
-  const { nivel, mes, search, page = 1, limit = 50 } = req.query;
+  const { nivel, mes, search, page = 1, limit = 50, inspector } = req.query;
   const conditions = ['deleted_at IS NULL'];
   const params = [];
 
@@ -380,6 +380,15 @@ function getAllAdmin(req, res) {
     }
     conditions.push('nivel = ?');
     params.push(String(nivel).toLowerCase().trim());
+  }
+
+  if (inspector) {
+    const inspectorNombre = String(inspector).trim();
+    if (!inspectorNombre) {
+      return res.status(400).json({ error: 'Parámetro "inspector" inválido' });
+    }
+    conditions.push('inspector_nombre = ?');
+    params.push(inspectorNombre.substring(0, 150));
   }
 
   if (mes) {

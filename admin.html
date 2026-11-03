@@ -123,6 +123,18 @@
           <label for="admin-news-search">Buscar en todas las noticias</label>
           <input id="admin-news-search" type="search" placeholder="Título, categoría o contenido…" autocomplete="off" />
         </div>
+        <div class="admin-list-toolbar">
+          <span id="admin-news-summary" class="admin-summary-badge">0 noticias</span>
+          <label class="admin-sort-control" for="admin-news-sort">
+            Ordenar por
+            <select id="admin-news-sort">
+              <option value="newest">Más recientes</option>
+              <option value="oldest">Más antiguas</option>
+              <option value="title">Título A–Z</option>
+            </select>
+          </label>
+          <button id="admin-news-clear" class="btn-secondary" type="button">Limpiar búsqueda</button>
+        </div>
         <div id="admin-noticias-panel" class="admin-noticias-panel">
           <div class="admin-loading">Cargando noticias administrativas...</div>
         </div>
@@ -276,6 +288,12 @@
           </select>
         </div>
         <div class="admin-list-controls">
+          <label for="actividad-filtro-inspector">Filtrar por inspector</label>
+          <select id="actividad-filtro-inspector">
+            <option value="">Todos los inspectores</option>
+          </select>
+        </div>
+        <div class="admin-list-controls">
           <label for="admin-activity-month">Filtrar por mes</label>
           <input id="admin-activity-month" type="month" />
         </div>
@@ -284,7 +302,18 @@
           <input id="admin-activity-search" type="search" placeholder="Título, descripción, grado o inspector…" autocomplete="off" />
         </div>
       </div>
-      <button id="admin-activity-clear-filters" class="btn-secondary" type="button">Limpiar filtros</button>
+      <div class="admin-list-toolbar">
+        <span id="admin-activity-summary" class="admin-summary-badge">0 actividades</span>
+        <label class="admin-sort-control" for="admin-activity-sort">
+          Ordenar por
+          <select id="admin-activity-sort">
+            <option value="newest">Más recientes</option>
+            <option value="oldest">Más antiguas</option>
+            <option value="title">Título A–Z</option>
+          </select>
+        </label>
+        <button id="admin-activity-clear-filters" class="btn-secondary" type="button">Limpiar filtros</button>
+      </div>
       <div id="admin-actividades-panel" class="admin-noticias-panel">
         <div class="admin-loading">Cargando actividades…</div>
       </div>

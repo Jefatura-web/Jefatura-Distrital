@@ -275,6 +275,31 @@ let adminNewsHasNext = false;
 let adminNewsRecords = [];
 let adminNewsRequestSequence = 0;
 
+function applyAdminSort(records, sortValue) {
+  const sorted = [...records];
+  if (!sortValue || sortValue === 'newest') {
+    return sorted.sort((a, b) => {
+      const aDate = new Date(a.created_at || a.updated_at || a.fecha || 0).getTime();
+      const bDate = new Date(b.created_at || b.updated_at || b.fecha || 0).getTime();
+      return bDate - aDate;
+    });
+  }
+  if (sortValue === 'oldest') {
+    return sorted.sort((a, b) => {
+      const aDate = new Date(a.created_at || a.updated_at || a.fecha || 0).getTime();
+      const bDate = new Date(b.created_at || b.updated_at || b.fecha || 0).getTime();
+      return aDate - bDate;
+    });
+  }
+  return sorted.sort((a, b) => String(a.titulo || a.grado || '').localeCompare(String(b.titulo || b.grado || ''), 'es-AR'));
+}
+
+function updateAdminSummary(id, count, label) {
+  const summary = getElement(id);
+  if (!summary) return;
+  summary.textContent = `${count} ${label}${count === 1 ? '' : ''}`;
+}
+
 function formatNewsCard(noticia) {
   const cat    = sanitize(noticia.categoria || 'General');
   const titulo = sanitize(noticia.titulo    || 'Sin título');
@@ -301,30 +326,60 @@ function formatNewsCard(noticia) {
     </article>`;
 }
 
+function renderAdminListMessage(panel, { type, message, kind = 'empty' } = {}) {
+  if (!panel) return;
+  const retry = ['empty', 'error'].includes(kind)
+    ? `<button type="button" class="btn-secondary admin-reload-btn" data-admin-reload="${type}">Recargar</button>`
+    : '';
+
+  panel.innerHTML = `
+    <div class="admin-state ${kind}" role="status" aria-live="polite">
+      <p>${sanitize(message)}</p>
+      ${retry}
+    </div>
+  `;
+
+  panel.querySelector('[data-admin-reload]')?.addEventListener('click', async () => {
+    if (type === 'news') await loadAdminNoticias();
+    if (type === 'activities') await loadAdminActividades();
+  });
+}
+
 function renderAdminNoticias() {
   const panel = getElement('#admin-noticias-panel');
   if (!panel) return;
   const query = (getElement('#admin-news-search')?.value || '').trim().toLocaleLowerCase('es-AR');
-  panel.innerHTML = adminNewsRecords.length
-    ? adminNewsRecords.map(formatNewsCard).join('')
-    : `<div class="admin-empty">${query ? 'No se encontraron noticias.' : 'No hay noticias disponibles.'}</div>`;
+  const sortedRecords = applyAdminSort(adminNewsRecords, getElement('#admin-news-sort')?.value || 'newest');
+  updateAdminSummary('#admin-news-summary', sortedRecords.length, 'noticias');
+
+  if (!sortedRecords.length) {
+    const message = query ? 'No se encontraron noticias con ese criterio.' : 'Todavía no hay noticias cargadas.';
+    renderAdminListMessage(panel, { type: 'news', message, kind: 'empty' });
+    return;
+  }
+
+  panel.innerHTML = sortedRecords.map(formatNewsCard).join('');
   attachCardEvents();
   const previous = getElement('#admin-news-prev');
   const next = getElement('#admin-news-next');
   const page = getElement('#admin-news-page');
   if (previous) previous.disabled = adminNewsPage <= 1;
   if (next) next.disabled = !adminNewsHasNext;
-  if (page) page.textContent = `Página ${adminNewsPage} · ${adminNewsRecords.length} resultado${adminNewsRecords.length === 1 ? '' : 's'}`;
+  if (page) page.textContent = `Página ${adminNewsPage} · ${sortedRecords.length} resultado${sortedRecords.length === 1 ? '' : 's'}`;
 }
 
 async function loadAdminNoticias() {
   const panel = getElement('#admin-noticias-panel');
   if (!panel) return;
-  panel.innerHTML = '<div class="admin-loading">Cargando noticias…</div>';
+  panel.innerHTML = '<div class="admin-state loading" role="status" aria-live="polite"><p>Cargando noticias…</p></div>';
 
   const token = getToken();
   if (!token) {
-    panel.innerHTML = '<div class="admin-empty">Ingresá el token para ver y administrar las noticias.</div>';
+    renderAdminListMessage(panel, {
+      type: 'news',
+      message: 'Ingresá el token para ver y administrar las noticias.',
+      kind: 'empty'
+    });
     return;
   }
 
@@ -350,7 +405,11 @@ async function loadAdminNoticias() {
     renderAdminNoticias();
   } catch (error) {
     handleError(error, 'loadAdminNoticias');
-    panel.innerHTML = '<div class="admin-error">No se pudieron cargar las noticias. Recargá la página.</div>';
+    renderAdminListMessage(panel, {
+      type: 'news',
+      message: 'No se pudieron cargar las noticias. Revisá la conexión o intentá nuevamente.',
+      kind: 'error'
+    });
   }
 }
 
@@ -473,12 +532,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function initAdminListControls() {
   let newsSearchTimer;
-  getElement('#admin-news-search')?.addEventListener('input', () => {
+  const newsSearchInput = getElement('#admin-news-search');
+  newsSearchInput?.addEventListener('input', () => {
     clearTimeout(newsSearchTimer);
     newsSearchTimer = setTimeout(() => {
       adminNewsPage = 1;
       loadAdminNoticias();
     }, 250);
+  });
+  getElement('#admin-news-clear')?.addEventListener('click', () => {
+    if (newsSearchInput) newsSearchInput.value = '';
+    adminNewsPage = 1;
+    loadAdminNoticias();
+  });
+  getElement('#admin-news-sort')?.addEventListener('change', () => {
+    renderAdminNoticias();
   });
   getElement('#admin-news-prev')?.addEventListener('click', async () => {
     if (adminNewsPage <= 1) return;
@@ -491,12 +559,41 @@ function initAdminListControls() {
     await loadAdminNoticias();
   });
   let activitySearchTimer;
-  getElement('#admin-activity-search')?.addEventListener('input', () => {
+  const activitySearchInput = getElement('#admin-activity-search');
+  const activityInspectorFilter = getElement('#actividad-filtro-inspector');
+  const activityLevelFilter = getElement('#actividad-filtro-nivel');
+  const activityMonthFilter = getElement('#admin-activity-month');
+  activitySearchInput?.addEventListener('input', () => {
     clearTimeout(activitySearchTimer);
     activitySearchTimer = setTimeout(() => {
       adminActivityPage = 1;
       loadAdminActividades();
     }, 250);
+  });
+  activityLevelFilter?.addEventListener('change', () => {
+    adminActivityPage = 1;
+    loadAdminActividades();
+  });
+  activityMonthFilter?.addEventListener('change', () => {
+    adminActivityPage = 1;
+    loadAdminActividades();
+  });
+  activityInspectorFilter?.addEventListener('change', () => {
+    adminActivityPage = 1;
+    loadAdminActividades();
+  });
+  getElement('#admin-activity-clear-filters')?.addEventListener('click', () => {
+    if (activitySearchInput) activitySearchInput.value = '';
+    if (activityLevelFilter) activityLevelFilter.value = '';
+    if (activityMonthFilter) activityMonthFilter.value = '';
+    if (activityInspectorFilter) activityInspectorFilter.value = '';
+    const sortInput = getElement('#admin-activity-sort');
+    if (sortInput) sortInput.value = 'newest';
+    adminActivityPage = 1;
+    loadAdminActividades();
+  });
+  getElement('#admin-activity-sort')?.addEventListener('change', () => {
+    renderAdminActividades();
   });
   getElement('#admin-activity-prev')?.addEventListener('click', async () => {
     if (adminActivityPage <= 1) return;
@@ -747,6 +844,7 @@ async function showAdminPanel({ gate, panel, status, logoutButton }) {
     cargarCategorias().catch(error => {
       showAppAlert('No se pudieron cargar las categorías. Revisá la conexión antes de crear una noticia.', 'error');
     }),
+    refreshActivityInspectorFilter(),
     loadAdminNoticias(),
     loadAdminActividades()
   ]);
@@ -969,32 +1067,74 @@ function formatActividadCard(actividad) {
     </article>`;
 }
 
+async function refreshActivityInspectorFilter() {
+  const inspectorFilter = getElement('#actividad-filtro-inspector');
+  if (!inspectorFilter) return;
+
+  const currentValue = inspectorFilter.value;
+  const previousOptions = [...inspectorFilter.options].map(option => option.value).filter(Boolean);
+  inspectorFilter.innerHTML = '<option value="">Todos los inspectores</option>';
+
+  try {
+    const response = await apiFetch('/actividades/filtros');
+    const inspectors = Array.isArray(response?.inspectors) ? response.inspectors.filter(Boolean) : [];
+    inspectors.forEach(name => {
+      const option = document.createElement('option');
+      option.value = name;
+      option.textContent = name;
+      inspectorFilter.appendChild(option);
+    });
+
+    if (currentValue && inspectors.includes(currentValue)) {
+      inspectorFilter.value = currentValue;
+    } else if (previousOptions.includes(currentValue)) {
+      inspectorFilter.value = currentValue;
+    } else {
+      inspectorFilter.value = '';
+    }
+  } catch (error) {
+    handleError(error, 'refreshActivityInspectorFilter');
+    inspectorFilter.disabled = true;
+  }
+}
+
 function renderAdminActividades() {
   const panel = getElement('#admin-actividades-panel');
   if (!panel) return;
   const query = (getElement('#admin-activity-search')?.value || '').trim().toLocaleLowerCase('es-AR');
-  panel.innerHTML = adminActivityRecords.length
-    ? adminActivityRecords.map(formatActividadCard).join('')
-    : `<div class="admin-empty">${query ? 'No se encontraron actividades.' : 'No hay actividades cargadas.'}</div>`;
-  attachActividadCardEvents(adminActivityRecords);
+  const sortedRecords = applyAdminSort(adminActivityRecords, getElement('#admin-activity-sort')?.value || 'newest');
+  updateAdminSummary('#admin-activity-summary', sortedRecords.length, 'actividades');
+
+  if (!sortedRecords.length) {
+    const message = query ? 'No se encontraron actividades con ese criterio.' : 'Todavía no hay actividades cargadas.';
+    renderAdminListMessage(panel, { type: 'activities', message, kind: 'empty' });
+    return;
+  }
+
+  panel.innerHTML = sortedRecords.map(formatActividadCard).join('');
+  attachActividadCardEvents(sortedRecords);
   const previous = getElement('#admin-activity-prev');
   const next = getElement('#admin-activity-next');
   const page = getElement('#admin-activity-page');
   if (previous) previous.disabled = adminActivityPage <= 1;
   if (next) next.disabled = !adminActivityHasNext;
-  if (page) page.textContent = `Página ${adminActivityPage} · ${adminActivityRecords.length} resultado${adminActivityRecords.length === 1 ? '' : 's'}`;
+  if (page) page.textContent = `Página ${adminActivityPage} · ${sortedRecords.length} resultado${sortedRecords.length === 1 ? '' : 's'}`;
 }
 
 async function loadAdminActividades() {
   const panel = getElement('#admin-actividades-panel');
   if (!panel) return;
-  panel.innerHTML = '<div class="admin-loading">Cargando actividades…</div>';
+  panel.innerHTML = '<div class="admin-state loading" role="status" aria-live="polite"><p>Cargando actividades…</p></div>';
 
   const nivelFiltro = getElement('#actividad-filtro-nivel')?.value || '';
   const token = getToken();
 
   if (!token) {
-    panel.innerHTML = '<div class="admin-empty">Ingresá el token de administración arriba para ver el listado.</div>';
+    renderAdminListMessage(panel, {
+      type: 'activities',
+      message: 'Ingresá el token de administración arriba para ver el listado.',
+      kind: 'empty'
+    });
     return;
   }
 
@@ -1004,6 +1144,8 @@ async function loadAdminActividades() {
       limit: String(ADMIN_LIST_PAGE_SIZE + 1)
     });
     if (nivelFiltro) params.set('nivel', nivelFiltro);
+    const inspectorFiltro = getElement('#actividad-filtro-inspector')?.value || '';
+    if (inspectorFiltro) params.set('inspector', inspectorFiltro);
     const search = getElement('#admin-activity-search')?.value.trim();
     if (search) params.set('search', search);
     const month = getElement('#admin-activity-month')?.value;
@@ -1023,7 +1165,11 @@ async function loadAdminActividades() {
     renderAdminActividades();
   } catch (error) {
     handleError(error, 'loadAdminActividades');
-    panel.innerHTML = '<div class="admin-error">No se pudieron cargar las actividades. Verificá el token.</div>';
+    renderAdminListMessage(panel, {
+      type: 'activities',
+      message: 'No se pudieron cargar las actividades. Revisá la conexión o intentá nuevamente.',
+      kind: 'error'
+    });
   }
 }
 

@@ -136,7 +136,7 @@ body.admin-page{background:var(--bg);font-family:Inter, system-ui, Arial, sans-s
 
 .admin-activity-filters {
   display: grid;
-  grid-template-columns: minmax(180px, 280px) minmax(180px, 240px) minmax(240px, 1fr);
+  grid-template-columns: minmax(180px, 240px) minmax(180px, 240px) minmax(180px, 220px) minmax(240px, 1fr);
   align-items: end;
   gap: 12px;
   margin-bottom: 12px;

@@ -191,9 +191,46 @@ body.admin-page{background:var(--bg);font-family:Inter, system-ui, Arial, sans-s
   margin-top: 8px;
 }
 
+.upload-dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 58px;
+  padding: 12px 14px;
+  border: 2px dashed var(--celeste-claro);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(74, 144, 196, 0.04), rgba(74, 144, 196, 0.01));
+  color: var(--azul-marino);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.upload-dropzone.is-dragging {
+  border-color: var(--azul-marino);
+  background: rgba(74, 144, 196, 0.08);
+  box-shadow: 0 0 0 4px rgba(74, 144, 196, 0.08);
+}
+
+.upload-dropzone:focus-visible {
+  outline: 3px solid var(--celeste);
+  outline-offset: 2px;
+}
+
+.upload-dropzone .btn-upload-img {
+  flex-shrink: 0;
+}
+
 @media (max-width: 768px) {
   .admin-activity-filters {
     grid-template-columns: 1fr;
+  }
+
+  .upload-dropzone {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .admin-access-card {

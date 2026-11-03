@@ -81,15 +81,18 @@
             <div class="form-group">
               <label for="noticia-imagen">Fotos de la noticia (opcional)</label>
               <div class="upload-field-wrap">
-                <textarea id="noticia-imagen" name="imagenes" rows="3" placeholder="Pegá una URL por línea o elegí fotos desde tu computadora."></textarea>
-              <label class="btn-upload-img" title="Subir imagen desde tu computadora">
-                📎 Elegir fotos
-                <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/heic,image/heif" class="upload-file-input"
-                         data-target="noticia-imagen" data-mode="append" data-preview="preview-noticia-img" />
-              </label>
-            </div>
-            <div id="preview-noticia-img" class="upload-preview-list" aria-live="polite"></div>
-            <p id="upload-noticia-status" class="upload-status" role="status" aria-live="polite">Podés seleccionar hasta 20 fotos por tanda; también podés pegar URLs.</p>
+                <textarea id="noticia-imagen" name="imagenes" rows="3" placeholder="Pegá una URL por línea, arrastrá fotos o pegá imágenes desde el portapapeles."></textarea>
+                <div class="upload-dropzone" data-target="noticia-imagen" data-mode="append" tabindex="0" aria-label="Arrastrá fotos aquí o hacé click para seleccionar">
+                  <span>📂 Arrastrá fotos aquí o pegá desde el portapapeles</span>
+                  <label class="btn-upload-img" title="Subir imagen desde tu computadora">
+                    📎 Elegir fotos
+                    <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/heic,image/heif" class="upload-file-input"
+                             data-target="noticia-imagen" data-mode="append" data-preview="preview-noticia-img" />
+                  </label>
+                </div>
+              </div>
+              <div id="preview-noticia-img" class="upload-preview-list" aria-live="polite"></div>
+              <p id="upload-noticia-status" class="upload-status" role="status" aria-live="polite">Podés seleccionar hasta 20 fotos por tanda; también podés pegar URLs o arrastrarlas.</p>
             </div>
 
             <div class="form-options">
@@ -245,15 +248,18 @@
             <label for="actividad-imagenes">Fotos (una URL por línea)</label>
             <textarea id="actividad-imagenes" name="imagenes" rows="4" placeholder="Podés pegar URLs o elegir varias fotos debajo."></textarea>
             <div class="upload-append-wrap">
-              <label class="btn-upload-img btn-upload-append" title="Elegir y subir fotos desde tu computadora">
-                📎 Elegir fotos
-                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/heic,image/heif" multiple class="upload-file-input"
-                       data-target="actividad-imagenes" data-mode="append" />
-              </label>
+              <div class="upload-dropzone" data-target="actividad-imagenes" data-mode="append" tabindex="0" aria-label="Arrastrá fotos aquí o hacé click para seleccionar">
+                <span>📂 Arrastrá fotos aquí o pegá desde el portapapeles</span>
+                <label class="btn-upload-img btn-upload-append" title="Elegir y subir fotos desde tu computadora">
+                  📎 Elegir fotos
+                  <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/heic,image/heif" multiple class="upload-file-input"
+                         data-target="actividad-imagenes" data-mode="append" />
+                </label>
+              </div>
               <span id="upload-actividad-status" class="upload-status"></span>
             </div>
             <div id="actividad-photo-list" class="upload-preview-list" aria-live="polite"></div>
-            <small>Podés elegir varias fotos a la vez. Al editar, esta lista reemplaza la galería completa.</small>
+            <small>Podés elegir varias fotos a la vez, arrastrarlas, o pegarlas desde el portapapeles. Al editar, esta lista reemplaza la galería completa.</small>
           </div>
         </fieldset>
 

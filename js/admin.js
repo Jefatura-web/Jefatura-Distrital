@@ -1248,17 +1248,24 @@ const ACCEPTED_IMAGE_TYPES = new Set([
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const MAX_FILES_PER_BATCH = 20;
 
-function getUploadStatus(input) {
-  return input.dataset.target === 'noticia-imagen'
-    ? getElement('#upload-noticia-status')
-    : getElement('#upload-actividad-status');
+function getUploadStatus(targetOrInput) {
+  const targetName = targetOrInput?.dataset?.target || targetOrInput?.id;
+  if (targetName === 'noticia-imagen') return getElement('#upload-noticia-status');
+  if (targetName === 'actividad-imagenes') return getElement('#upload-actividad-status');
+  return null;
 }
 
-function showUploadStatus(input, message, isError = false) {
-  const status = getUploadStatus(input);
+function showUploadStatus(targetOrInput, message, isError = false) {
+  const status = getUploadStatus(targetOrInput);
   if (!status) return;
   status.textContent = message;
   status.classList.toggle('upload-status-error', isError);
+}
+
+function appendUniqueImageUrls(target, urls) {
+  const seen = new Set(parseImagenes(target.value));
+  urls.filter(Boolean).forEach(url => seen.add(url));
+  target.value = [...seen].join('\n');
 }
 
 function renderNewsPreviews() {
@@ -1334,66 +1341,110 @@ async function uploadFile(file) {
   return result;
 }
 
-async function handleImageSelection(input) {
-  const files = Array.from(input.files || []);
-  if (files.length === 0) return;
+async function processUploadedFiles(files, targetSelector, mode = 'append') {
+  const fileList = Array.from(files || []).filter(Boolean);
+  if (fileList.length === 0) return;
+
+  const target = getElement(`#${targetSelector}`);
+  if (!target) return;
 
   const token = getToken();
   if (!token) {
-    showUploadStatus(input, 'Ingresá el token antes de subir fotos.', true);
-    input.value = '';
+    showUploadStatus({ dataset: { target: targetSelector } }, 'Ingresá el token antes de subir fotos.', true);
     return;
   }
 
-  if (files.length > MAX_FILES_PER_BATCH) {
-    showUploadStatus(input, `Elegí hasta ${MAX_FILES_PER_BATCH} fotos por tanda.`, true);
-    input.value = '';
+  if (fileList.length > MAX_FILES_PER_BATCH) {
+    showUploadStatus({ dataset: { target: targetSelector } }, `Elegí hasta ${MAX_FILES_PER_BATCH} fotos por tanda.`, true);
     return;
   }
 
-  const invalid = files.find(file => !ACCEPTED_IMAGE_TYPES.has(file.type) || file.size > MAX_IMAGE_SIZE);
+  const invalid = fileList.find(file => !ACCEPTED_IMAGE_TYPES.has(file.type) || file.size > MAX_IMAGE_SIZE);
   if (invalid) {
-    showUploadStatus(input, 'Usá fotos JPG, PNG, WebP, GIF, AVIF, HEIC o HEIF de hasta 10 MB cada una.', true);
-    input.value = '';
+    showUploadStatus({ dataset: { target: targetSelector } }, 'Usá fotos JPG, PNG, WebP, GIF, AVIF, HEIC o HEIF de hasta 10 MB cada una.', true);
     return;
   }
-
-  const target = getElement(`#${input.dataset.target}`);
-  if (!target) return;
 
   let uploadedCount = 0;
   try {
-    for (const [index, file] of files.entries()) {
-      showUploadStatus(input, `Subiendo ${index + 1} de ${files.length}: ${file.name}`);
+    for (const [index, file] of fileList.entries()) {
+      showUploadStatus({ dataset: { target: targetSelector } }, `Subiendo ${index + 1} de ${fileList.length}: ${file.name}`);
       const image = await uploadFile(file);
       uploadedCount += 1;
-      if (input.dataset.mode === 'append') {
-        target.value = [...parseImagenes(target.value), image.url].join('\n');
-        if (input.dataset.target === 'noticia-imagen') renderNewsPreviews();
-        else renderActivityPreviews();
+      if (mode === 'append') {
+        appendUniqueImageUrls(target, [image.url]);
       } else {
         target.value = image.url;
-        renderNewsPreviews();
       }
+      if (targetSelector === 'noticia-imagen') renderNewsPreviews();
+      else renderActivityPreviews();
     }
-    showUploadStatus(input, `${uploadedCount} foto${uploadedCount === 1 ? '' : 's'} subida${uploadedCount === 1 ? '' : 's'} correctamente.`);
+    showUploadStatus({ dataset: { target: targetSelector } }, `${uploadedCount} foto${uploadedCount === 1 ? '' : 's'} subida${uploadedCount === 1 ? '' : 's'} correctamente.`);
   } catch (error) {
-    handleError(error, 'handleImageSelection');
+    handleError(error, 'processUploadedFiles');
     const detail = error?.body?.error || error.message || 'No se pudo subir la foto.';
-    showUploadStatus(input, uploadedCount
+    showUploadStatus({ dataset: { target: targetSelector } }, uploadedCount
       ? `${uploadedCount} foto${uploadedCount === 1 ? '' : 's'} subida${uploadedCount === 1 ? '' : 's'}. ${detail} Podés guardar la noticia sin foto y volver a agregarla después.`
       : `${detail} Podés guardar la noticia sin foto y volver a agregarla después.`, true);
-  } finally {
-    input.value = '';
   }
+}
+
+async function handleImageSelection(input) {
+  const files = Array.from(input.files || []);
+  if (files.length === 0) return;
+  await processUploadedFiles(files, input.dataset.target, input.dataset.mode || 'append');
+  input.value = '';
+}
+
+function handleTextareaPaste(event) {
+  const clipboardFiles = Array.from(event.clipboardData?.files || []);
+  if (!clipboardFiles.length) return;
+  event.preventDefault();
+  const target = event.currentTarget;
+  processUploadedFiles(clipboardFiles, target.id, 'append');
 }
 
 function initImageUploads() {
   document.querySelectorAll('.upload-file-input').forEach(input => {
     input.addEventListener('change', () => handleImageSelection(input));
   });
+
+  document.querySelectorAll('.upload-dropzone').forEach(dropzone => {
+    const input = dropzone.querySelector('input[type="file"]');
+    const targetName = dropzone.dataset.target;
+
+    dropzone.addEventListener('dragenter', event => {
+      event.preventDefault();
+      dropzone.classList.add('is-dragging');
+    });
+    dropzone.addEventListener('dragover', event => {
+      event.preventDefault();
+      dropzone.classList.add('is-dragging');
+    });
+    dropzone.addEventListener('dragleave', event => {
+      if (!dropzone.contains(event.relatedTarget)) {
+        dropzone.classList.remove('is-dragging');
+      }
+    });
+    dropzone.addEventListener('drop', event => {
+      event.preventDefault();
+      dropzone.classList.remove('is-dragging');
+      const files = Array.from(event.dataTransfer?.files || []);
+      if (files.length) processUploadedFiles(files, targetName, dropzone.dataset.mode || 'append');
+    });
+    dropzone.addEventListener('click', () => input?.click());
+    dropzone.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        input?.click();
+      }
+    });
+  });
+
   getElement('#actividad-imagenes')?.addEventListener('input', renderActivityPreviews);
+  getElement('#actividad-imagenes')?.addEventListener('paste', handleTextareaPaste);
   getElement('#noticia-imagen')?.addEventListener('input', renderNewsPreviews);
+  getElement('#noticia-imagen')?.addEventListener('paste', handleTextareaPaste);
   renderActivityPreviews();
   renderNewsPreviews();
 }

@@ -282,6 +282,7 @@ function renderNoticiasList(noticias = getAvailableNoticias()) {
               onerror="this.onerror=null;this.parentNode.classList.add('cn-imagen-fallback');this.remove()">`
         : '')
       : '';
+
     card.innerHTML = `
       <div class="cn-imagen" style="--category-color:${categoryColor}">${imgHtml}<span class="cn-emoji" aria-hidden="true">${sanitize(icon)}</span></div>
       <div class="cn-body">
@@ -293,6 +294,27 @@ function renderNoticiasList(noticias = getAvailableNoticias()) {
           ${articleUrl ? `<a class="cn-leer" href="${sanitize(articleUrl)}">Leer más →</a>` : ''}
         </div>
       </div>`;
+
+    if (articleUrl) {
+      card.classList.add('card-clickable');
+      card.setAttribute('tabindex', '0');
+      card.setAttribute('role', 'link');
+      card.setAttribute('aria-label', `Abrir noticia: ${sanitize(noticia.titulo)}`);
+      const openArticle = event => {
+        if (event.target instanceof HTMLElement && event.target.closest('a, button, input, select, textarea, label')) {
+          return;
+        }
+        window.location.assign(articleUrl);
+      };
+      card.addEventListener('click', openArticle);
+      card.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openArticle(event);
+        }
+      });
+    }
+
     grid.appendChild(card);
   });
 }

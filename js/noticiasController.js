@@ -590,7 +590,7 @@ function getCalendar(req, res) {
     return res.status(400).json({ error: "Parámetro 'mes' inválido. Formato esperado: YYYY-MM" });
   }
   db.query(
-    `SELECT id, titulo, descripcion, texto, fecha
+    `SELECT id, titulo, descripcion, texto, fecha, slug
      FROM noticias
      WHERE deleted_at IS NULL AND publicada = 1
        AND fecha >= ? AND fecha < DATE_ADD(?, INTERVAL 1 MONTH)

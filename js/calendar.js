@@ -168,12 +168,20 @@ export function showNewsForDate(date) {
       return;
     }
 
-    const cards = matches.map(n => `
-      <article class="calendar-news-card">
-        <h6>${sanitize(n.titulo)}</h6>
-        <p>${sanitize(n.descripcion || n.texto || '').substring(0, 120)}…</p>
-      </article>
-    `).join('');
+    const cards = matches.map(n => {
+      const title = sanitize(n.titulo || 'Noticia');
+      const summary = sanitize(n.descripcion || n.texto || '').substring(0, 120).trim();
+      const slug = String(n.slug || '').trim();
+      const articleLink = slug ? `<a href="/noticia/${encodeURIComponent(slug)}" class="calendar-news-link">Leer más</a>` : '';
+
+      return `
+        <article class="calendar-news-card">
+          <h6>${title}</h6>
+          <p>${summary}${summary ? '…' : ''}</p>
+          ${articleLink}
+        </article>
+      `;
+    }).join('');
 
     results.innerHTML = `<h5>Noticias del ${label}</h5>${cards}`;
   } catch (error) {

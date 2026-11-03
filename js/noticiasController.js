@@ -155,6 +155,10 @@ function absoluteImageUrl(value, siteUrl) {
   try {
     const parsed = new URL(image, siteUrl);
     if (parsed.protocol === 'https:') return parsed.href;
+    if (parsed.protocol === 'http:' && parsed.hostname === 'res.cloudinary.com') {
+      parsed.protocol = 'https:';
+      return parsed.href;
+    }
     if (parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname)) return parsed.href;
     return '';
   } catch {
@@ -185,9 +189,49 @@ function renderArticlePage(noticia, images, canonicalUrl, siteName = 'Jefatura D
     .map(paragraph => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
     .join('\n');
   const gallery = imageUrls.length
-    ? `<div class="article-gallery" aria-label="Galería de fotos">${imageUrls.map((url, index) =>
-      `<figure><img src="${escapeHtml(url)}" alt="${title} — foto ${index + 1}"${index ? ' loading="lazy"' : ''}></figure>`
-    ).join('')}</div>`
+    ? `<section class="article-gallery" role="group" aria-roledescription="carrusel" aria-label="Galería de fotos">
+        <div class="article-gallery-viewport" tabindex="0" aria-label="Fotos de la noticia">
+          <div class="article-gallery-track">${imageUrls.map((url, index) =>
+            `<figure class="article-gallery-slide" role="group" aria-roledescription="diapositiva" aria-label="Foto ${index + 1} de ${imageUrls.length}"><img src="${escapeHtml(url)}" alt="${title} — foto ${index + 1}"${index ? ' loading="lazy"' : ''}></figure>`
+          ).join('')}</div>
+        </div>
+        ${imageUrls.length > 1 ? `<div class="article-gallery-controls">
+          <button class="article-gallery-prev" type="button" aria-label="Foto anterior">‹</button>
+          <span class="article-gallery-status" aria-live="polite">1 / ${imageUrls.length}</span>
+          <button class="article-gallery-next" type="button" aria-label="Foto siguiente">›</button>
+        </div>
+        <script>
+          (() => {
+            const gallery = document.querySelector('.article-gallery');
+            const viewport = gallery?.querySelector('.article-gallery-viewport');
+            const slides = [...(gallery?.querySelectorAll('.article-gallery-slide') || [])];
+            const previous = gallery?.querySelector('.article-gallery-prev');
+            const next = gallery?.querySelector('.article-gallery-next');
+            const status = gallery?.querySelector('.article-gallery-status');
+            if (!viewport || slides.length < 2 || !previous || !next || !status) return;
+
+            let frame = 0;
+            const update = () => {
+              frame = 0;
+              const index = Math.min(slides.length - 1, Math.round(viewport.scrollLeft / viewport.clientWidth));
+              previous.disabled = index === 0;
+              next.disabled = index === slides.length - 1;
+              status.textContent = String(index + 1) + ' / ' + slides.length;
+            };
+            const scheduleUpdate = () => {
+              if (!frame) frame = requestAnimationFrame(update);
+            };
+            previous.addEventListener('click', () => viewport.scrollBy({ left: -viewport.clientWidth, behavior: 'smooth' }));
+            next.addEventListener('click', () => viewport.scrollBy({ left: viewport.clientWidth, behavior: 'smooth' }));
+            viewport.addEventListener('scroll', scheduleUpdate, { passive: true });
+            viewport.addEventListener('keydown', event => {
+              if (event.key === 'ArrowLeft') previous.click();
+              if (event.key === 'ArrowRight') next.click();
+            });
+            update();
+          })();
+        </script>` : ''}
+      </section>`
     : '';
   const structuredData = JSON.stringify({
     '@context': 'https://schema.org',

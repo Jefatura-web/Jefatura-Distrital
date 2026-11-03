@@ -59,13 +59,19 @@ function attachImagenes(noticias, callback) {
 }
 
 function normalizeNewsImages(images, legacyImageUrl) {
-  const source = Array.isArray(images) ? images : (legacyImageUrl ? [legacyImageUrl] : []);
-  return source.map(image => {
+  const candidateImages = Array.isArray(images)
+    ? images
+    : (typeof images === 'string' || (images && typeof images.url === 'string')
+      ? [images]
+      : (legacyImageUrl ? [legacyImageUrl] : []));
+
+  return candidateImages.map(image => {
     if (typeof image === 'string') return { url: image.trim(), public_id: null };
-    return {
-      url: String(image?.url || '').trim(),
-      public_id: String(image?.public_id || '').trim() || null
+    if (image && typeof image.url === 'string') return {
+      url: image.url.trim(),
+      public_id: String(image.public_id || '').trim() || null
     };
+    return { url: '', public_id: null };
   }).filter(image => image.url);
 }
 
@@ -99,12 +105,15 @@ async function getCategoriasCache() {
 }
 
 function generateSlug(titulo) {
-  return titulo
+  return String(titulo ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
-    .replace(/[^\w\s-]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
     .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 function generateUniqueSlug(baseSlug, callback) {
@@ -150,16 +159,25 @@ function escapeHtml(value) {
 }
 
 function absoluteImageUrl(value, siteUrl) {
-  const image = String(value || '').trim();
+  const image = typeof value === 'string'
+    ? value.trim()
+    : (value && typeof value.url === 'string' ? value.url.trim() : '');
+
   if (!image) return '';
+
+  const safeBase = String(siteUrl || '').trim();
   try {
-    const parsed = new URL(image, siteUrl);
-    if (parsed.protocol === 'https:') return parsed.href;
-    if (parsed.protocol === 'http:' && parsed.hostname === 'res.cloudinary.com') {
-      parsed.protocol = 'https:';
-      return parsed.href;
+    const parsed = new URL(image, safeBase || undefined);
+    const protocol = parsed.protocol.toLowerCase();
+
+    if (protocol === 'https:') return parsed.href;
+    if (protocol === 'http:') {
+      if (parsed.hostname === 'res.cloudinary.com') {
+        parsed.protocol = 'https:';
+        return parsed.href;
+      }
+      if (['localhost', '127.0.0.1'].includes(parsed.hostname)) return parsed.href;
     }
-    if (parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname)) return parsed.href;
     return '';
   } catch {
     return '';
@@ -174,10 +192,18 @@ function getDescription(noticia) {
 function renderArticlePage(noticia, images, canonicalUrl, siteName = 'Jefatura Distrital Quilmes') {
   const title = escapeHtml(noticia.titulo);
   const description = escapeHtml(getDescription(noticia));
-  const safeCanonicalUrl = escapeHtml(canonicalUrl);
+  const safeCanonicalUrl = escapeHtml(String(canonicalUrl || ''));
   const safeSiteName = escapeHtml(siteName);
-  const siteOrigin = new URL(canonicalUrl).origin;
-  const imageUrls = [...new Set((images || [])
+
+  let siteOrigin = 'https://jefatura.example';
+  try {
+    siteOrigin = new URL(String(canonicalUrl || 'https://jefatura.example')).origin;
+  } catch {
+    siteOrigin = 'https://jefatura.example';
+  }
+
+  const normalizedImages = normalizeNewsImages(images, '');
+  const imageUrls = [...new Set(normalizedImages
     .map(image => absoluteImageUrl(image, siteOrigin))
     .filter(Boolean))];
   const cover = imageUrls[0] || '';
@@ -1302,6 +1328,9 @@ module.exports = {
   setDatabase,
   requireAuth,
   timingSafeEqual,
+  normalizeNewsImages,
+  generateSlug,
+  absoluteImageUrl,
   getAll,
   getCategorias,
   getCalendar,
@@ -1318,5 +1347,6 @@ module.exports = {
   getStats,
   create,
   update,
-  remove
+  remove,
+  validateNoticiaData
 };

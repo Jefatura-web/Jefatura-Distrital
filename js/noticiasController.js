@@ -158,6 +158,23 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function isSafeImageUrl(imageUrl) {
+  if (typeof imageUrl !== 'string') return false;
+  const candidate = imageUrl.trim();
+  if (!candidate || /[\u0000-\u001f\u007f]/.test(candidate)) return false;
+
+  try {
+    const parsed = new URL(candidate);
+    const protocol = parsed.protocol.toLowerCase();
+    if (!['http:', 'https:'].includes(protocol)) return false;
+    if (protocol === 'http:' && !['res.cloudinary.com', 'localhost', '127.0.0.1'].includes(parsed.hostname)) return false;
+    return true;
+  } catch {
+    const isRelative = /^\/(?:[^/]|$)/.test(candidate) || candidate.startsWith('./') || candidate.startsWith('../');
+    return isRelative && !/^(?:javascript|data|vbscript|file|blob):/i.test(candidate);
+  }
+}
+
 function absoluteImageUrl(value, siteUrl) {
   const image = typeof value === 'string'
     ? value.trim()
@@ -216,15 +233,15 @@ function renderArticlePage(noticia, images, canonicalUrl, siteName = 'Jefatura D
     .join('\n');
   const gallery = imageUrls.length
     ? `<section class="article-gallery" role="group" aria-roledescription="carrusel" aria-label="Galería de fotos">
-        <div class="article-gallery-viewport" tabindex="0" aria-label="Fotos de la noticia">
+        <div class="article-gallery-viewport" id="article-gallery-viewport" tabindex="0" aria-label="Fotos de la noticia" aria-live="polite">
           <div class="article-gallery-track">${imageUrls.map((url, index) =>
             `<figure class="article-gallery-slide" role="group" aria-roledescription="diapositiva" aria-label="Foto ${index + 1} de ${imageUrls.length}"><img src="${escapeHtml(url)}" alt="${title} — foto ${index + 1}"${index ? ' loading="lazy"' : ''}></figure>`
           ).join('')}</div>
         </div>
         ${imageUrls.length > 1 ? `<div class="article-gallery-controls">
-          <button class="article-gallery-prev" type="button" aria-label="Foto anterior">‹</button>
+          <button class="article-gallery-prev" type="button" aria-label="Foto anterior" aria-controls="article-gallery-viewport">‹</button>
           <span class="article-gallery-status" aria-live="polite">1 / ${imageUrls.length}</span>
-          <button class="article-gallery-next" type="button" aria-label="Foto siguiente">›</button>
+          <button class="article-gallery-next" type="button" aria-label="Foto siguiente" aria-controls="article-gallery-viewport">›</button>
         </div>
         <script>
           (() => {
@@ -238,21 +255,21 @@ function renderArticlePage(noticia, images, canonicalUrl, siteName = 'Jefatura D
 
             let frame = 0;
             const update = () => {
-              frame = 0;
-              const index = Math.min(slides.length - 1, Math.round(viewport.scrollLeft / viewport.clientWidth));
+              const index = Math.min(slides.length - 1, Math.max(0, Math.round(viewport.scrollLeft / Math.max(viewport.clientWidth, 1))));
               previous.disabled = index === 0;
               next.disabled = index === slides.length - 1;
               status.textContent = String(index + 1) + ' / ' + slides.length;
+              frame = 0;
             };
             const scheduleUpdate = () => {
               if (!frame) frame = requestAnimationFrame(update);
             };
-            previous.addEventListener('click', () => viewport.scrollBy({ left: -viewport.clientWidth, behavior: 'smooth' }));
-            next.addEventListener('click', () => viewport.scrollBy({ left: viewport.clientWidth, behavior: 'smooth' }));
+            previous.addEventListener('click', () => viewport.scrollBy({ left: -Math.max(viewport.clientWidth, 1), behavior: 'smooth' }));
+            next.addEventListener('click', () => viewport.scrollBy({ left: Math.max(viewport.clientWidth, 1), behavior: 'smooth' }));
             viewport.addEventListener('scroll', scheduleUpdate, { passive: true });
             viewport.addEventListener('keydown', event => {
-              if (event.key === 'ArrowLeft') previous.click();
-              if (event.key === 'ArrowRight') next.click();
+              if (event.key === 'ArrowLeft') { event.preventDefault(); previous.click(); }
+              if (event.key === 'ArrowRight') { event.preventDefault(); next.click(); }
             });
             update();
           })();

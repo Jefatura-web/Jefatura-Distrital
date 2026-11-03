@@ -896,8 +896,8 @@ async function handleActividadSubmit(event) {
     imagenes: imageEntries(formData.get('imagenes'))
   };
 
-  if (!data.nivel || !data.grado || !data.mes || !data.titulo) {
-    showAppAlert('Completá nivel, grado, mes y título.', 'error');
+  if (!data.nivel || !data.mes || !data.titulo) {
+    showAppAlert('Completá nivel, mes y título.', 'error');
     return;
   }
 

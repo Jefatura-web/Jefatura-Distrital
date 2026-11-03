@@ -68,10 +68,12 @@ function validateActividadData(data, isUpdate = false) {
     }
   }
 
-  if (!isUpdate || data.grado !== undefined) {
-    if (!data.grado || typeof data.grado !== 'string' || data.grado.trim().length < 1) {
-      errors.push('grado requerido');
-    }
+  if (data.grado !== undefined && data.grado !== null && typeof data.grado !== 'string') {
+    errors.push('grado debe ser texto o vacío');
+  }
+
+  if (data.grado !== undefined && typeof data.grado === 'string' && data.grado.trim().length > 150) {
+    errors.push('grado demasiado largo (máximo 150 caracteres)');
   }
 
   if (data.escuela !== undefined && (typeof data.escuela !== 'string' || data.escuela.length > 255)) {
@@ -495,7 +497,7 @@ function create(req, res) {
 
   const sanitizedData = {
     nivel: String(nivel).toLowerCase().trim(),
-    grado: String(grado).trim().substring(0, 150),
+    grado: grado !== undefined && grado !== null ? String(grado).trim().substring(0, 150) : '',
     escuela: escuela ? String(escuela).trim().substring(0, 255) : null,
     mes: normalizeMesToFirstDay(mes),
     titulo: String(titulo).trim().substring(0, 255),
@@ -575,7 +577,10 @@ function update(req, res) {
   const params = [];
 
   if (nivel !== undefined) { updates.push('nivel = ?'); params.push(String(nivel).toLowerCase().trim()); }
-  if (grado !== undefined) { updates.push('grado = ?'); params.push(String(grado).trim().substring(0, 150)); }
+  if (grado !== undefined) {
+    updates.push('grado = ?');
+    params.push(grado !== null && grado !== '' ? String(grado).trim().substring(0, 150) : '');
+  }
   if (escuela !== undefined) { updates.push('escuela = ?'); params.push(escuela ? String(escuela).trim().substring(0, 255) : null); }
   if (mes !== undefined) { updates.push('mes = ?'); params.push(normalizeMesToFirstDay(mes)); }
   if (titulo !== undefined) { updates.push('titulo = ?'); params.push(String(titulo).trim().substring(0, 255)); }
@@ -682,4 +687,5 @@ router.get('/:id', getById);
 module.exports = router;
 module.exports.setDatabase = setDatabase;
 module.exports.NIVELES_VALIDOS = NIVELES_VALIDOS;
+module.exports.validateActividadData = validateActividadData;
 module.exports.purgeExpiredDeleted = purgeExpiredDeleted;

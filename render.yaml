@@ -43,3 +43,18 @@ services:
       # https://jefatura-quilmes.onrender.com
       - key: CORS_ORIGIN
         sync: false
+
+      # URL pública usada en enlaces canónicos, sitemap y metadatos sociales.
+      - key: SITE_URL
+        sync: false
+
+      # ── Cloudinary ───────────────────────────────────────────────────────────
+      # Necesarias para las cargas y el monitoreo de imágenes.
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+
+      - key: CLOUDINARY_API_KEY
+        sync: false
+
+      - key: CLOUDINARY_API_SECRET
+        sync: false

@@ -17,6 +17,14 @@ const actividadesController = require('./actividadesController');
 const adminAuth = require('./adminAuth');
 const mediaStorage = require('./mediaStorage');
 
+const PRIVATE_STATIC_PATHS = new Set([
+  '/base%20jefatura.sql',
+  '/base jefatura.sql',
+  '/package.json',
+  '/package-lock.json',
+  '/render.yaml'
+]);
+
 // ===============================
 // INICIALIZAR APLICACIÓN
 // ===============================
@@ -38,6 +46,14 @@ app.use((req, res, next) => {
 // ===============================
 app.use(cors(config.cors));
 app.use(express.json({ limit: '1mb' }));
+// El directorio del proyecto contiene el esquema y la configuración del
+// servidor. No deben quedar disponibles como archivos estáticos públicos.
+app.use((req, res, next) => {
+  if (PRIVATE_STATIC_PATHS.has(req.path.toLowerCase()) || req.path.startsWith('/.env')) {
+    return res.status(404).end();
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, '..')));
 
 // ===============================

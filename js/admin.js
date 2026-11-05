@@ -1333,7 +1333,6 @@ async function uploadFile(file) {
   formData.append('image', file, file.name);
   const result = await apiFetch('/upload', {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}` },
     body: formData
   });
   if (!result?.ok || !result.url || !result.public_id) throw new Error(result?.error || 'El servidor no devolvió los datos de la imagen.');
